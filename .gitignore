@@ -43,6 +43,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Local AI agent instructions & prompt specs
+# Local AI agent instructions, prompt specs & workflow files
 AGENTS.md
 docs/
+.agents/
