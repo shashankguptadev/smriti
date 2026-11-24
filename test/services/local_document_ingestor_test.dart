@@ -18,7 +18,10 @@ void main() {
     });
 
     test('supportedExtensions contains expected formats', () {
-      expect(ingestor.supportedExtensions, containsAll(['.pdf', '.txt', '.md']));
+      expect(
+        ingestor.supportedExtensions,
+        containsAll(['.pdf', '.txt', '.md', '.png', '.jpg', '.jpeg']),
+      );
     });
 
     test('ingests .txt file with overlapping chunks', () async {

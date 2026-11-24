@@ -16,7 +16,7 @@ class DocumentsScreen extends StatelessWidget {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md'],
+        allowedExtensions: ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg'],
       );
 
       if (result == null || result.files.isEmpty) return;
