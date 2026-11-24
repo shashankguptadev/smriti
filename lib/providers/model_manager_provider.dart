@@ -126,6 +126,39 @@ class ModelManagerProvider extends ChangeNotifier {
     }
   }
 
+  /// Activates an already-on-device `.litertlm` model at [modelPath] **without
+  /// copying** it into app storage. Use this when the user has already downloaded
+  /// the model to their device (e.g. Downloads folder) and just wants Smriti to
+  /// use it in-place via the LiteRT engine.
+  Future<bool> activateExistingModel(String modelPath) async {
+    final file = File(modelPath);
+    if (!file.existsSync()) {
+      _status = ModelStatus.error;
+      _errorMessage = 'Model file not found at: $modelPath';
+      notifyListeners();
+      return false;
+    }
+    if (!modelPath.toLowerCase().endsWith('.litertlm')) {
+      _status = ModelStatus.error;
+      _errorMessage = 'Selected file is not a .litertlm model.';
+      notifyListeners();
+      return false;
+    }
+    _errorMessage = null;
+    try {
+      _activeModelPath = modelPath;
+      _modelSizeBytes = await file.length();
+      _status = ModelStatus.ready;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _status = ModelStatus.error;
+      _errorMessage = 'Failed to activate model: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Sets the provider to ready state via mock bypass mode.
   void useMockOrBypass() {
     _status = ModelStatus.mockBypass;

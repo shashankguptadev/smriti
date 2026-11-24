@@ -110,7 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Running in Mock Mode — Tap to set up an on-device AI model',
+                                'Running in Mock Mode — Tap to activate or import an AI model',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSecondaryContainer,
                                   fontWeight: FontWeight.w500,

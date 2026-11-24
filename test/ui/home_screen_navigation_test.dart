@@ -85,7 +85,7 @@ void main() {
       await tester.pumpWidget(createTestApp());
       await tester.pumpAndSettle();
 
-      final bannerText = find.text('Running in Mock Mode — Tap to set up an on-device AI model');
+      final bannerText = find.text('Running in Mock Mode — Tap to activate or import an AI model');
       expect(bannerText, findsOneWidget);
 
       await tester.tap(bannerText);

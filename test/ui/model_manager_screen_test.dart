@@ -24,8 +24,8 @@ void main() {
 
       expect(find.text('AI Model Setup'), findsOneWidget);
       expect(find.text('On-Device AI Engine'), findsOneWidget);
-      expect(find.text('Import .litertlm Model'), findsOneWidget);
-      expect(find.text('Skip / Use Mock Engine'), findsOneWidget);
+      expect(find.text('Import (Copy) .litertlm Model'), findsOneWidget);
+      expect(find.text('Activate Downloaded Model'), findsOneWidget);
     });
 
     testWidgets('skip button invokes onSetupComplete callback', (tester) async {

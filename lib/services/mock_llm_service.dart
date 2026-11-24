@@ -49,12 +49,17 @@ class MockLlmService implements LlmService {
 
   String _buildResponse(String prompt, List<String> contextChunks) {
     if (contextChunks.isEmpty) {
-      return 'I could not find relevant information in your documents to answer "$prompt".';
+      return 'I could not find a matching passage for "$prompt". '
+          'This is mock mode, so I cannot reason beyond the retrieved text. '
+          'Go to AI Model Setup and tap "Activate Downloaded Model" to enable on-device inference.';
     }
-    // Extract a brief snippet rather than dumping the entire chunk
+    // Be explicit that this is a retrieval preview, not a generated answer.
     final snippet = contextChunks.first.length > 200
         ? '${contextChunks.first.substring(0, 200)}...'
         : contextChunks.first;
-    return 'Based on your documents, here is the answer regarding "$prompt": $snippet';
+    return 'I found this passage that may help with "$prompt":\n\n'
+        '“$snippet”\n\n'
+        'This is a retrieval preview from mock mode, not an AI-generated answer. '
+        'Go to AI Model Setup → "Activate Downloaded Model" to get real synthesized responses.';
   }
 }

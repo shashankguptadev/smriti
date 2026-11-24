@@ -50,10 +50,10 @@ class ModelManagerScreen extends StatelessWidget {
       }
 
       final lowerPath = path.toLowerCase();
-      if (!lowerPath.endsWith('.litertlm') && !lowerPath.endsWith('.bin')) {
+      if (!lowerPath.endsWith('.litertlm')) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(
-            content: Text('Please select a valid .litertlm or .bin model file.'),
+            content: Text('Please select a valid .litertlm model file.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -74,6 +74,58 @@ class ModelManagerScreen extends StatelessWidget {
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('Error selecting model: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Lets the user pick an already-downloaded `.litertlm` from anywhere on
+  /// the device and **activate it in-place** (no copy). This is the right
+  /// flow when the model is already in Downloads or another folder.
+  Future<void> _pickAndActivateExistingModel(BuildContext context) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final provider = context.read<ModelManagerProvider>();
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final path = result.files.first.path;
+      if (path == null) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('Could not access selected file path.')),
+        );
+        return;
+      }
+
+      if (!path.toLowerCase().endsWith('.litertlm')) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Please select a valid .litertlm model file.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final success = await provider.activateExistingModel(path);
+      if (success) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Model activated! Smriti will now use on-device inference.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        onSetupComplete?.call();
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Error activating model: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -267,7 +319,9 @@ class ModelManagerScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Download a .litertlm file to your device Downloads folder, then tap "Import .litertlm Model" below.',
+                            'Download a .litertlm file to your device (e.g. via browser to Downloads). '
+                            'Then tap "Activate Downloaded Model" below to use it instantly, '
+                            'or "Import (Copy)" to store a private copy inside the app.',
                             style: theme.textTheme.bodySmall,
                           ),
                           const SizedBox(height: 12),
@@ -339,22 +393,56 @@ class ModelManagerScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                   ],
 
+                  // ── Option A: Activate an already-downloaded model in-place ──
                   SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: FilledButton.icon(
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Activate Downloaded Model'),
+                      onPressed: provider.status == ModelStatus.importing
+                          ? null
+                          : () => _pickAndActivateExistingModel(context),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Already downloaded the model to your device? Pick the .litertlm file '
+                    'from Downloads (or any folder) to activate it without copying.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  // ── Option B: Copy/import model into app-private storage ──
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
                       icon: const Icon(Icons.file_upload_outlined),
-                      label: Text(provider.hasRealModel ? 'Replace with New Model' : 'Import .litertlm Model'),
+                      label: Text(provider.hasRealModel ? 'Replace (Copy) with New Model' : 'Import (Copy) .litertlm Model'),
                       onPressed: provider.status == ModelStatus.importing
                           ? null
                           : () => _pickAndImportModel(context),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Copies the model into app-private storage. Use this if the original '
+                    'file may be deleted or moved later.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     height: 48,
-                    child: OutlinedButton(
+                    child: TextButton(
                       child: Text(provider.hasRealModel ? 'Switch to Mock Engine' : 'Skip / Use Mock Engine'),
                       onPressed: () {
                         provider.useMockOrBypass();
