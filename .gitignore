@@ -42,6 +42,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+/android/.gradle/
 
 # Local AI agent instructions, prompt specs & workflow files
 AGENTS.md
