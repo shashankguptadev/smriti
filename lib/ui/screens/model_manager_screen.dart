@@ -81,8 +81,8 @@ class ModelManagerScreen extends StatelessWidget {
   }
 
   /// Lets the user pick an already-downloaded `.litertlm` from anywhere on
-  /// the device and **activate it in-place** (no copy). This is the right
-  /// flow when the model is already in Downloads or another folder.
+  /// the device and copies it to app-private storage so the LiteRT engine
+  /// always gets a complete, stable file (not a truncated file_picker cache).
   Future<void> _pickAndActivateExistingModel(BuildContext context) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final provider = context.read<ModelManagerProvider>();
@@ -112,11 +112,15 @@ class ModelManagerScreen extends StatelessWidget {
         return;
       }
 
-      final success = await provider.activateExistingModel(path);
+      // On Android, file_picker returns a path inside its own temp cache
+      // (/cache/file_picker/…). For a 2.5 GB model that cache copy is often
+      // truncated → "Invalid flatbuffer". We MUST copy to app-private storage
+      // via an Isolate to get a complete, stable file before handing it to LiteRT.
+      final success = await provider.importLocalModel(File(path));
       if (success) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(
-            content: Text('Model activated! Smriti will now use on-device inference.'),
+            content: Text('Model copied and activated! Smriti will now use on-device inference.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -321,7 +325,7 @@ class ModelManagerScreen extends StatelessWidget {
                           Text(
                             'Download a .litertlm file to your device (e.g. via browser to Downloads). '
                             'Then tap "Activate Downloaded Model" below to use it instantly, '
-                            'or "Import (Copy)" to store a private copy inside the app.',
+                            'or tap "Activate Downloaded Model" to copy it into app storage.',
                             style: theme.textTheme.bodySmall,
                           ),
                           const SizedBox(height: 12),
@@ -408,7 +412,8 @@ class ModelManagerScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Already downloaded the model to your device? Pick the .litertlm file '
-                    'from Downloads (or any folder) to activate it without copying.',
+                    'from Downloads (or any folder). It will be copied to app storage '
+                    'to give LiteRT a complete, stable file (~2.5 GB takes a moment).',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -423,7 +428,7 @@ class ModelManagerScreen extends StatelessWidget {
                     height: 48,
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.file_upload_outlined),
-                      label: Text(provider.hasRealModel ? 'Replace (Copy) with New Model' : 'Import (Copy) .litertlm Model'),
+                      label: Text(provider.hasRealModel ? 'Replace with New Model' : 'Import .litertlm Model'),
                       onPressed: provider.status == ModelStatus.importing
                           ? null
                           : () => _pickAndImportModel(context),
@@ -431,8 +436,7 @@ class ModelManagerScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Copies the model into app-private storage. Use this if the original '
-                    'file may be deleted or moved later.',
+                    'Same as above — both options copy the model to app-private storage.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,

@@ -58,8 +58,23 @@ void main() async {
   modelManager.addListener(() async {
     if (modelManager.hasRealModel) {
       final edge = EdgeLlmService(modelPath: modelManager.activeModelPath);
-      await edge.initialize();
-      switchableLlm.switchTo(edge);
+      try {
+        await edge.initialize();
+        switchableLlm.switchTo(edge);
+        debugPrint('main: EdgeLlmService initialized and hot-swapped in.');
+      } catch (e) {
+        // The LiteRT engine failed to load (e.g. corrupted file, unsupported
+        // model format). Revert the ModelManagerProvider to an error state so
+        // the UI shows the failure instead of silently crashing.
+        debugPrint('main: EdgeLlmService.initialize() failed: $e');
+        final mock = MockLlmService();
+        await mock.initialize();
+        switchableLlm.switchTo(mock);
+        modelManager.setEngineError(
+          'Model failed to load: ${_shortError(e)}. '
+          'The file may be incomplete or unsupported. Please re-import.',
+        );
+      }
     } else {
       final mock = MockLlmService();
       await mock.initialize();
@@ -96,4 +111,12 @@ void main() async {
       child: const SmritiApp(),
     ),
   );
+}
+
+/// Returns the first line / short summary of an exception message so it fits
+/// in a SnackBar / error card without overwhelming the user.
+String _shortError(Object e) {
+  final full = e.toString();
+  final firstLine = full.split('\n').first.trim();
+  return firstLine.length > 120 ? '${firstLine.substring(0, 117)}...' : firstLine;
 }

@@ -71,10 +71,14 @@ class EdgeLlmService implements LlmService {
         throw FileSystemException('Model file not found', modelPath);
       }
 
-      // Check if file size is unreasonably small to prevent loading corrupt files
+      // Require at least 10 MB — any real .litertlm model is hundreds of MB.
+      // A file smaller than this is certainly a truncated file_picker cache copy.
       final length = await file.length();
-      if (length < 100) {
-        throw const FormatException('Model file appears corrupt or incomplete.');
+      if (length < 10 * 1024 * 1024) {
+        throw FormatException(
+          'Model file is too small (${(length / 1024 / 1024).toStringAsFixed(1)} MB). '
+          'The file is likely a truncated cache copy. Please re-import the full model.',
+        );
       }
 
       try {

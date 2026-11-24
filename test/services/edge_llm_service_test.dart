@@ -54,7 +54,9 @@ void main() {
 
     test('initializes and streams tokens with valid model file', () async {
       final modelFile = File('${tempDir.path}/model.litertlm');
-      await modelFile.writeAsBytes(List.filled(200, 42)); // valid size > 100
+      // Write > 10 MB so it passes the minimum-size guard (real models are
+      // hundreds of MB; we simulate a valid file just large enough to pass).
+      await modelFile.writeAsBytes(List.filled(10 * 1024 * 1024 + 1, 42));
 
       final service = EdgeLlmService(
         modelPath: modelFile.path,

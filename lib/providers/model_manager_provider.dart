@@ -159,6 +159,17 @@ class ModelManagerProvider extends ChangeNotifier {
     }
   }
 
+  /// Called by [main.dart] when the LiteRT engine fails to initialize after a
+  /// successful file import. Reverts the status to [ModelStatus.error] so the
+  /// UI can show the failure and let the user retry or switch to mock mode.
+  void setEngineError(String message) {
+    _status = ModelStatus.error;
+    _errorMessage = message;
+    _activeModelPath = null;
+    _modelSizeBytes = 0;
+    notifyListeners();
+  }
+
   /// Sets the provider to ready state via mock bypass mode.
   void useMockOrBypass() {
     _status = ModelStatus.mockBypass;
