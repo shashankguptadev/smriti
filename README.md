@@ -16,12 +16,12 @@ No telemetry, no cloud APIs, and zero network calls. All your data stays strictl
 
 ## Key Features
 
-- **🔒 100% Offline & Private:** Zero internet permissions required. Documents, vector embeddings, and LLM inference run strictly on your device hardware.
-- **⚡ Fast Vector Search (ObjectBox HNSW):** Sub-millisecond vector similarity queries using 384-dimensional cosine distance indices.
-- **📄 Multi-Format Document Ingestion:** Parses `.pdf`, `.txt`, and `.md` files. Heavy parsing and sliding-window chunking are isolated off the main UI thread using `Isolate.run()`.
-- **💬 Streaming RAG Chat:** Conversational assistant that streams answers token-by-token with expandable source citations (file name, chunk index, similarity distance, and exact excerpts).
-- **🧠 Model Manager:** First-launch onboarding allows importing local `.litertlm` (LiteRT-LM) model weights or running in mock mode for development and testing.
-- **🔋 Battery & RAM Friendly:** Automatic lifecycle management via `WidgetsBindingObserver` frees heavy model weights when the app is backgrounded.
+- **100% Offline & Private:** Zero internet permissions required. Documents, vector embeddings, and LLM inference run strictly on your device hardware.
+- **Fast Vector Search (ObjectBox HNSW):** Sub-millisecond vector similarity queries using 384-dimensional cosine distance indices.
+- **Multi-Format Document Ingestion:** Parses `.pdf`, `.txt`, and `.md` files. Heavy parsing and sliding-window chunking are isolated off the main UI thread using `Isolate.run()`.
+- **Streaming RAG Chat:** Conversational assistant that streams answers token-by-token with expandable source citations (file name, chunk index, similarity distance, and exact excerpts).
+- **Model Manager:** First-launch onboarding allows importing local `.litertlm` (LiteRT-LM) model weights or running in mock mode for development and testing.
+- **Battery & RAM Friendly:** Automatic lifecycle management via `WidgetsBindingObserver` frees heavy model weights when the app is backgrounded.
 
 ---
 
