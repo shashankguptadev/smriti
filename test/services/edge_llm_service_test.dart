@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smriti/services/edge_llm_service.dart';
 
@@ -14,6 +15,41 @@ void main() {
       if (tempDir.existsSync()) {
         await tempDir.delete(recursive: true);
       }
+    });
+
+    test('detectModelType correctly identifies model families', () {
+      expect(
+        EdgeLlmService.detectModelType('models/gemma-4-E2B-it.litertlm'),
+        equals(ModelType.gemma4),
+      );
+      expect(
+        EdgeLlmService.detectModelType('gemma4-instruct.bin'),
+        equals(ModelType.gemma4),
+      );
+      expect(
+        EdgeLlmService.detectModelType('gemma-2b-it.litertlm'),
+        equals(ModelType.gemmaIt),
+      );
+      expect(
+        EdgeLlmService.detectModelType('qwen3.5-coder.litertlm'),
+        equals(ModelType.qwen35),
+      );
+      expect(
+        EdgeLlmService.detectModelType('qwen-2.5-7b.litertlm'),
+        equals(ModelType.qwen),
+      );
+      expect(
+        EdgeLlmService.detectModelType('deepseek-r1-distill.litertlm'),
+        equals(ModelType.deepSeek),
+      );
+      expect(
+        EdgeLlmService.detectModelType('llama-3.2-1b.litertlm'),
+        equals(ModelType.llama),
+      );
+      expect(
+        EdgeLlmService.detectModelType('custom_weights.litertlm'),
+        equals(ModelType.general),
+      );
     });
 
     test('initializes and streams tokens with valid model file', () async {
