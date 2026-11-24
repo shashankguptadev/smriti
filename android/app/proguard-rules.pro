@@ -9,6 +9,7 @@
 -keep class io.flutter.view.** { *; }
 -keep class io.flutter.** { *; }
 -dontwarn io.flutter.view.AccessibilityBridge$**
+-dontwarn com.google.android.play.core.**
 
 # --- ObjectBox Native Vector Database ---
 -keep class io.objectbox.** { *; }
