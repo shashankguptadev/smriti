@@ -22,6 +22,11 @@ dependencies:
   syncfusion_flutter_pdf: ^26.2.14
   path_provider: ^2.1.5
   path: ^1.9.1
+  flutter_edge_ai: ^2.7.2
+  flutter_edge_ai_litertlm: ^1.21.2
+  url_launcher: ^6.3.3
+  google_mlkit_text_recognition: ^1.0.3
+  pdfx: ^2.11.0
 
 dev_dependencies:
   flutter_test:
