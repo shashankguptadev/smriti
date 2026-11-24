@@ -49,11 +49,12 @@ void main() {
       expect(File(provider.activeModelPath!).existsSync(), isTrue);
     });
 
-    test('useMockOrBypass sets status to ready', () {
+    test('useMockOrBypass sets status to mockBypass and marks model ready', () {
       expect(provider.isModelReady, isFalse);
       provider.useMockOrBypass();
-      expect(provider.status, equals(ModelStatus.ready));
+      expect(provider.status, equals(ModelStatus.mockBypass));
       expect(provider.isModelReady, isTrue);
+      expect(provider.hasRealModel, isFalse);
     });
   });
 }

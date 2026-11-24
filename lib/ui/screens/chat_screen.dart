@@ -81,9 +81,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
           return Column(
             children: [
-              Consumer<ModelManagerProvider>(
-                builder: (context, modelManager, _) {
-                  if (modelManager.hasRealModel) return const SizedBox.shrink();
+              Builder(
+                builder: (context) {
+                  final modelManager = Provider.of<ModelManagerProvider?>(context);
+                  if (modelManager == null || modelManager.hasRealModel) {
+                    return const SizedBox.shrink();
+                  }
                   return Material(
                     color: theme.colorScheme.secondaryContainer,
                     child: InkWell(
