@@ -331,12 +331,14 @@ class ModelManagerScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('Gemma 4 E2B (Recommended, ~2.58 GB)'),
-                            subtitle: const Text('High accuracy, open license'),
+                            title: const Text('Gemma 4 E2B (Recommended, ~2.41 GB)'),
+                            subtitle: const Text(
+                              'Pinned revision for this app version — download gemma-4-E2B-it.litertlm',
+                            ),
                             trailing: const Icon(Icons.open_in_new, size: 20),
                             onTap: () => _launchExternalUrl(
                               context,
-                              'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/tree/main',
+                              'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/tree/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1',
                             ),
                           ),
                           const Divider(),

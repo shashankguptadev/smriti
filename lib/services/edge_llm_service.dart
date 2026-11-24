@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
@@ -13,6 +14,38 @@ class LowMemoryException implements Exception {
   @override
   String toString() => 'LowMemoryException: $message';
 }
+
+/// Exception thrown when the imported model file does not match the SHA-256
+/// that [flutter_edge_ai_litertlm 1.21.2] was compiled against. The user
+/// downloaded a different (usually newer) commit from Hugging Face.
+class ModelVersionMismatchException implements Exception {
+  final String message;
+  const ModelVersionMismatchException(this.message);
+
+  @override
+  String toString() => 'ModelVersionMismatchException: $message';
+}
+
+/// SHA-256 digests of the exact model file revisions that the bundled
+/// [libLiteRtLm.so] in [flutter_edge_ai_litertlm 1.21.2] can parse.
+/// Source: litert_catalog.g.dart inside the package.
+///
+/// Keys are the lower-cased install filename; values are the expected digest.
+const _knownGoodSha256 = <String, String>{
+  'gemma-4-e2b-it.litertlm':
+      '181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c',
+  'gemma-4-e4b-it.litertlm':
+      '', // add when known
+};
+
+/// Pinned Hugging Face download URLs for each known-good model revision.
+/// These point to the exact commit the SDK was tested against.
+const _pinnedDownloadUrls = <String, String>{
+  'gemma-4-e2b-it.litertlm':
+      'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm'
+      '/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1'
+      '/gemma-4-E2B-it.litertlm',
+};
 
 /// Concrete [LlmService] executing on-device `.litertlm` models via [FlutterEdgeAi]
 /// with real token streaming, prompt grounding, and fallback guards for host environments.
@@ -80,6 +113,15 @@ class EdgeLlmService implements LlmService {
           'The file is likely a truncated cache copy. Please re-import the full model.',
         );
       }
+
+      // SHA-256 pre-flight: verify the file matches the exact revision that
+      // the native libLiteRtLm.so compiled into flutter_edge_ai_litertlm 1.21.2
+      // was tested against. A mismatch means the user downloaded a newer/different
+      // commit from Hugging Face — the flatbuffer schema changed and the bundled
+      // native runtime cannot parse it. We surface this immediately with a clear
+      // message and the pinned download URL, rather than crashing with the cryptic
+      // "Invalid flatbuffer" from deep inside the native engine.
+      await _verifyModelSha256(file, modelPath!);
 
       try {
         final detectedType = detectModelType(modelPath!);
@@ -303,4 +345,68 @@ class EdgeLlmService implements LlmService {
     }
     return buffer.toString().trim();
   }
+
+  /// Computes the SHA-256 of [file] and compares it against [_knownGoodSha256]
+  /// for files whose name is in the registry.
+  ///
+  /// - If the filename is not in the registry, the check is skipped (we can
+  ///   still attempt to load — the native engine may or may not succeed).
+  /// - If the filename is in the registry but the digest doesn't match, throws
+  ///   [ModelVersionMismatchException] with the pinned download URL so the
+  ///   user knows exactly which file to re-download.
+  static Future<void> _verifyModelSha256(File file, String path) async {
+    final key = path.split('/').last.toLowerCase();
+    final expected = _knownGoodSha256[key];
+    if (expected == null || expected.isEmpty) return; // unknown model — skip
+
+    debugPrint('EdgeLlmService: computing SHA-256 of $path …');
+    // Stream the file in 1 MB chunks to avoid loading 2.5 GB into RAM.
+    // sha256.startChunkedConversion takes a Sink<Digest>; we collect the
+    // result via a plain Completer-backed sink.
+    Digest? result;
+    final digestSink = _DigestSink((d) => result = d);
+    final byteSink = sha256.startChunkedConversion(digestSink);
+    final raf = await file.open();
+    try {
+      const chunkSize = 1 * 1024 * 1024;
+      final buf = List<int>.filled(chunkSize, 0);
+      while (true) {
+        final n = await raf.readInto(buf);
+        if (n == 0) break;
+        byteSink.add(buf.sublist(0, n));
+      }
+    } finally {
+      await raf.close();
+    }
+    byteSink.close(); // triggers digestSink.add(digest)
+    final actual = result!.toString();
+    debugPrint('EdgeLlmService: SHA-256 actual=$actual expected=$expected');
+
+    if (actual != expected) {
+      final url = _pinnedDownloadUrls[key] ?? '';
+      throw ModelVersionMismatchException(
+        'Model file "$key" does not match the version compatible with this app '
+        '(flutter_edge_ai_litertlm 1.21.2).\n\n'
+        'You downloaded a newer revision from Hugging Face. '
+        'Please delete the current model and re-download the pinned version:\n'
+        '$url\n\n'
+        'Expected SHA-256: $expected\n'
+        'Got:              $actual',
+      );
+    }
+    debugPrint('EdgeLlmService: SHA-256 ✓ verified.');
+  }
+}
+
+/// Minimal [Sink<Digest>] that calls [_onDigest] when the digest is added.
+/// Used as the output collector for [sha256.startChunkedConversion].
+class _DigestSink implements Sink<Digest> {
+  final void Function(Digest) _onDigest;
+  _DigestSink(this._onDigest);
+
+  @override
+  void add(Digest data) => _onDigest(data);
+
+  @override
+  void close() {}
 }
