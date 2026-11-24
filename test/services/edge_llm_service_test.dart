@@ -69,7 +69,7 @@ void main() {
       }
 
       final answer = tokens.join();
-      expect(answer, contains('could not find relevant context'));
+      expect(answer, contains('could not find relevant information'));
     });
   });
 }

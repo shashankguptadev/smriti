@@ -49,8 +49,12 @@ class MockLlmService implements LlmService {
 
   String _buildResponse(String prompt, List<String> contextChunks) {
     if (contextChunks.isEmpty) {
-      return 'Based on my knowledge, here is a mock answer to "$prompt".';
+      return 'I could not find relevant information in your documents to answer "$prompt".';
     }
-    return 'Based on your documents, here is the answer regarding "$prompt": ${contextChunks.first}';
+    // Extract a brief snippet rather than dumping the entire chunk
+    final snippet = contextChunks.first.length > 200
+        ? '${contextChunks.first.substring(0, 200)}...'
+        : contextChunks.first;
+    return 'Based on your documents, here is the answer regarding "$prompt": $snippet';
   }
 }
