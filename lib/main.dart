@@ -46,7 +46,11 @@ void main() async {
   final LlmService initialLlm = modelManager.hasRealModel
       ? EdgeLlmService(modelPath: modelManager.activeModelPath)
       : MockLlmService();
-  await initialLlm.initialize();
+  try {
+    await initialLlm.initialize();
+  } catch (e) {
+    debugPrint('Initial LLM initialization notice: $e');
+  }
 
   // Dynamic switchable LLM service for seamless hot-swapping
   final switchableLlm = SwitchableLlmService(initialLlm);
