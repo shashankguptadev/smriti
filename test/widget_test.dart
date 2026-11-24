@@ -7,6 +7,7 @@ import 'package:smriti/core/services/llm_service.dart';
 import 'package:smriti/core/services/vector_store_service.dart';
 import 'package:smriti/providers/chat_provider.dart';
 import 'package:smriti/providers/knowledge_base_provider.dart';
+import 'package:smriti/providers/model_manager_provider.dart';
 import 'package:smriti/services/in_memory_vector_store.dart';
 import 'package:smriti/services/local_document_ingestor.dart';
 import 'package:smriti/services/mock_embedding_service.dart';
@@ -26,10 +27,12 @@ void main() {
       vectorStoreService: vs,
       llmService: ls,
     );
+    final mm = ModelManagerProvider()..useMockOrBypass();
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          ChangeNotifierProvider<ModelManagerProvider>.value(value: mm),
           Provider<DocumentIngestor>.value(value: ingestor),
           Provider<EmbeddingService>.value(value: es),
           Provider<VectorStoreService>.value(value: vs),
@@ -73,10 +76,12 @@ void main() {
       vectorStoreService: vs,
       llmService: ls,
     );
+    final mm = ModelManagerProvider()..useMockOrBypass();
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          ChangeNotifierProvider<ModelManagerProvider>.value(value: mm),
           Provider<DocumentIngestor>.value(value: ingestor),
           Provider<EmbeddingService>.value(value: es),
           Provider<VectorStoreService>.value(value: vs),
