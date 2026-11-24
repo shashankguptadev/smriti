@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:isolate';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -98,8 +100,17 @@ class ModelManagerProvider extends ChangeNotifier {
       _progress = 0.5;
       notifyListeners();
 
-      await sourceFile.copy(targetPath);
+      final sourcePath = sourceFile.path;
+      await Isolate.run(() async {
+        final src = File(sourcePath);
+        await src.copy(targetPath);
+      });
       final targetFile = File(targetPath);
+
+      // Clean up temporary cache files created during file picking
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {}
 
       _activeModelPath = targetPath;
       _modelSizeBytes = await targetFile.length();

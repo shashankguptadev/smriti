@@ -36,8 +36,7 @@ class ModelManagerScreen extends StatelessWidget {
 
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['litertlm', 'bin'],
+        type: FileType.any,
       );
 
       if (result == null || result.files.isEmpty) return;
@@ -46,6 +45,17 @@ class ModelManagerScreen extends StatelessWidget {
       if (path == null) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text('Could not access selected file path.')),
+        );
+        return;
+      }
+
+      final lowerPath = path.toLowerCase();
+      if (!lowerPath.endsWith('.litertlm') && !lowerPath.endsWith('.bin')) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Please select a valid .litertlm or .bin model file.'),
+            backgroundColor: Colors.orange,
+          ),
         );
         return;
       }

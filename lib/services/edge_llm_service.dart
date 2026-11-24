@@ -106,6 +106,12 @@ class EdgeLlmService implements LlmService {
         _hasNativeModel = true;
         debugPrint('EdgeLlmService: native model loaded successfully.');
       } catch (e) {
+        if (Platform.isAndroid) {
+          debugPrint('EdgeLlmService: native install failed on Android: $e');
+          _hasNativeModel = false;
+          _isReady = false;
+          rethrow;
+        }
         debugPrint('EdgeLlmService: native install failed ($e), will use host fallback.');
         _hasNativeModel = false;
       }
@@ -123,20 +129,17 @@ class EdgeLlmService implements LlmService {
   /// Builds a structured system instruction for the model session.
   String _buildSystemPrompt(List<String> contextChunks) {
     if (contextChunks.isEmpty) {
-      return 'You are Smriti, a helpful offline assistant. '
-          'Respond naturally and concisely in complete sentences.';
+      return 'You are Smriti, a helpful offline personal knowledge assistant. '
+          'Respond naturally, conversationally, and concisely in complete sentences.';
     }
     return 'You are Smriti, an offline personal knowledge assistant. '
-        'The user has uploaded documents into their local knowledge base. '
-        'You will be given relevant excerpts from those documents. '
-        'Your task:\n'
-        '1. Read the excerpts carefully.\n'
-        '2. Answer the user\'s question using ONLY information from the excerpts.\n'
-        '3. Write your answer in clear, natural English sentences. '
-        'Do NOT copy-paste raw text from the excerpts.\n'
-        '4. If the excerpts do not contain enough information, '
-        'say "I could not find the answer in your documents."\n'
-        '5. Keep your answer concise — a few sentences at most.';
+        'You answer questions based on the provided document excerpts. '
+        'Guidelines:\n'
+        '1. Synthesize a direct, natural conversational answer in your own words.\n'
+        '2. Do NOT regurgitate, copy verbatim, or list raw excerpt sentences.\n'
+        '3. If the excerpts do not contain enough information to answer, '
+        'state clearly: "I could not find this information in your uploaded documents."\n'
+        '4. Keep your answer focused, accurate, and concise.';
   }
 
   /// Builds a structured user prompt with numbered document excerpts.
@@ -144,20 +147,31 @@ class EdgeLlmService implements LlmService {
     if (contextChunks.isEmpty) return prompt;
 
     final buffer = StringBuffer();
-    buffer.writeln('Here are the relevant excerpts from your documents:');
-    buffer.writeln();
+    buffer.writeln('Context from uploaded documents:');
+    buffer.writeln('---');
+    int totalChars = 0;
+    const maxContextChars = 2400;
+
     for (int i = 0; i < contextChunks.length; i++) {
-      // Trim each chunk to avoid bloating the context window with whitespace
       final trimmed = contextChunks[i].trim();
       if (trimmed.isEmpty) continue;
+      if (totalChars + trimmed.length > maxContextChars && totalChars > 0) {
+        final remaining = maxContextChars - totalChars;
+        if (remaining > 100) {
+          buffer.writeln('[Excerpt ${i + 1}]');
+          buffer.writeln(trimmed.substring(0, remaining));
+        }
+        break;
+      }
       buffer.writeln('[Excerpt ${i + 1}]');
       buffer.writeln(trimmed);
       buffer.writeln();
+      totalChars += trimmed.length;
     }
+    buffer.writeln('---');
     buffer.writeln('Question: $prompt');
     buffer.writeln();
-    buffer.writeln('Answer the question using only the information above. '
-        'Write a clear, natural answer in complete sentences.');
+    buffer.writeln('Instruction: Answer the question above conversationally and accurately using only the context provided. Do not copy raw text.');
     return buffer.toString();
   }
 
@@ -181,14 +195,17 @@ class EdgeLlmService implements LlmService {
           temperature: 0.3,
           topP: 0.85,
         );
-        await session.addQueryChunk(Message(text: userPrompt, isUser: true));
+        await session.addQueryChunk(Message.text(text: userPrompt, isUser: true));
         yield* session.getResponseAsync();
       } on OutOfMemoryError {
         throw const LowMemoryException('Out of memory while generating response.');
       } catch (e) {
         if (e is LowMemoryException) rethrow;
         debugPrint('EdgeLlmService native inference error: $e');
-        // Fall through to host fallback instead of crashing
+        if (Platform.isAndroid) {
+          throw Exception('LiteRT on-device inference error: $e');
+        }
+        // Fall through to host fallback instead of crashing (only on host / non-Android)
         yield* _hostFallbackStream(prompt, contextChunks);
       } finally {
         await session?.close();
