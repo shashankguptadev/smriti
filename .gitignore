@@ -49,3 +49,10 @@ app.*.map.json
 AGENTS.md
 docs/
 .agents/
+
+# Large Model Files
+models/
+*.litertlm
+*.bin
+*.task
+
