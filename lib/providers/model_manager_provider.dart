@@ -9,6 +9,7 @@ enum ModelStatus {
   missing,
   importing,
   ready,
+  mockBypass,
   error,
 }
 
@@ -33,7 +34,8 @@ class ModelManagerProvider extends ChangeNotifier {
   double get progress => _progress;
   String? get errorMessage => _errorMessage;
   int get modelSizeBytes => _modelSizeBytes;
-  bool get isModelReady => _status == ModelStatus.ready;
+  bool get hasRealModel => _status == ModelStatus.ready && _activeModelPath != null;
+  bool get isModelReady => _status == ModelStatus.ready || _status == ModelStatus.mockBypass;
 
   /// Checks the application documents directory for an existing `.litertlm` model.
   Future<void> checkModelAvailability() async {
@@ -113,9 +115,25 @@ class ModelManagerProvider extends ChangeNotifier {
     }
   }
 
-  /// Sets the provider to ready state (useful for host testing or mock bypass).
+  /// Sets the provider to ready state via mock bypass mode.
   void useMockOrBypass() {
-    _status = ModelStatus.ready;
+    _status = ModelStatus.mockBypass;
+    notifyListeners();
+  }
+
+  /// Deletes the imported on-device model and reverts to missing state.
+  Future<void> deleteActiveModel() async {
+    try {
+      if (_activeModelPath != null) {
+        final file = File(_activeModelPath!);
+        if (file.existsSync()) {
+          await file.delete();
+        }
+      }
+    } catch (_) {}
+    _activeModelPath = null;
+    _modelSizeBytes = 0;
+    _status = ModelStatus.missing;
     notifyListeners();
   }
 }
