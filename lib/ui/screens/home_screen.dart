@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/chat_provider.dart';
 import 'chat_screen.dart';
 import 'documents_screen.dart';
+import 'model_manager_screen.dart';
 
 /// Root screen with a Material 3 [NavigationBar] switching between
 /// the Chat and Documents screens.
@@ -27,6 +28,18 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(_selectedIndex == 0 ? 'Smriti Chat' : 'Knowledge Base'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'AI Model Setup',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const ModelManagerScreen(),
+                ),
+              );
+            },
+          ),
           if (_selectedIndex == 0)
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),

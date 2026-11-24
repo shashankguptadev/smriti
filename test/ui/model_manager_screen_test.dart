@@ -44,7 +44,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Skip / Use Mock Engine'));
+      final skipButton = find.text('Skip / Use Mock Engine');
+      await tester.ensureVisible(skipButton);
+      await tester.tap(skipButton);
       await tester.pumpAndSettle();
 
       expect(completed, isTrue);
