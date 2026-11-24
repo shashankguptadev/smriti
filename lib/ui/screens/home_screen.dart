@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/chat_provider.dart';
+import 'chat_screen.dart';
+import 'documents_screen.dart';
 
 /// Root screen with a Material 3 [NavigationBar] switching between
-/// the Chat and Documents tabs.
+/// the Chat and Documents screens.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -13,15 +17,30 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
   static const List<Widget> _pages = <Widget>[
-    Center(child: Text('Chat')),
-    Center(child: Text('Documents')),
+    ChatScreen(),
+    DocumentsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Smriti')),
-      body: _pages[_selectedIndex],
+      appBar: AppBar(
+        title: Text(_selectedIndex == 0 ? 'Smriti Chat' : 'Knowledge Base'),
+        actions: [
+          if (_selectedIndex == 0)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Clear conversation',
+              onPressed: () {
+                context.read<ChatProvider>().clearChat();
+              },
+            ),
+        ],
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
