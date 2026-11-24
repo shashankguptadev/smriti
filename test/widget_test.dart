@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:smriti/app.dart';
@@ -110,5 +111,57 @@ void main() {
     expect(find.text('Knowledge Base'), findsOneWidget);
     expect(find.text('No documents indexed yet'), findsOneWidget);
     expect(find.text('Add Document'), findsOneWidget);
+  });
+
+  testWidgets('SmritiApp responds to lifecycle transitions by unloading and reloading LLM',
+      (WidgetTester tester) async {
+    final vs = InMemoryVectorStore();
+    await vs.initialize();
+    const es = MockEmbeddingService();
+    final ls = MockLlmService(tokenDelay: Duration.zero);
+    await ls.initialize();
+    expect(ls.isReady, isTrue);
+
+    const ingestor = LocalDocumentIngestor();
+    final rag = RagService(
+      embeddingService: es,
+      vectorStoreService: vs,
+      llmService: ls,
+    );
+    final mm = ModelManagerProvider()..useMockOrBypass();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ModelManagerProvider>.value(value: mm),
+          Provider<DocumentIngestor>.value(value: ingestor),
+          Provider<EmbeddingService>.value(value: es),
+          Provider<VectorStoreService>.value(value: vs),
+          Provider<LlmService>.value(value: ls),
+          Provider<RagService>.value(value: rag),
+          ChangeNotifierProvider<KnowledgeBaseProvider>(
+            create: (_) => KnowledgeBaseProvider(
+              ingestor: ingestor,
+              embeddingService: es,
+              vectorStoreService: vs,
+            ),
+          ),
+          ChangeNotifierProvider<ChatProvider>(
+            create: (_) => ChatProvider(ragService: rag),
+          ),
+        ],
+        child: const SmritiApp(),
+      ),
+    );
+
+    // Transition to inactive (when backgrounded / task switched)
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(ls.isReady, isFalse);
+
+    // Transition back to foreground (resumed)
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(ls.isReady, isTrue);
   });
 }
