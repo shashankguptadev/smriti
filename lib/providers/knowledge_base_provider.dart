@@ -40,20 +40,9 @@ class KnowledgeBaseProvider extends ChangeNotifier {
   /// Loads stored documents from the vector store on startup.
   Future<void> loadDocuments() async {
     try {
-      final docIds = await vectorStoreService.listDocumentIds();
-      // Keep existing metadata or create fresh entries from IDs
-      final currentMap = {for (final d in _documents) d.documentId: d};
+      final summaries = await vectorStoreService.listDocumentSummaries();
       _documents.clear();
-      for (final id in docIds) {
-        if (currentMap.containsKey(id)) {
-          _documents.add(currentMap[id]!);
-        } else {
-          _documents.add(DocumentInfo(
-            documentId: id,
-            fileName: p.basename(id),
-          ));
-        }
-      }
+      _documents.addAll(summaries);
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to load documents: $e';

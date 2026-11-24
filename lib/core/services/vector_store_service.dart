@@ -1,3 +1,5 @@
+import '../models/document_info.dart';
+
 /// Persists and queries vector embeddings with associated metadata.
 abstract class VectorStoreService {
   /// Opens or prepares the vector store.
@@ -33,4 +35,10 @@ abstract class VectorStoreService {
 
   /// Returns a list of unique document IDs currently stored.
   Future<List<String>> listDocumentIds();
+
+  /// Returns high-level summaries for all persisted documents.
+  Future<List<DocumentInfo>> listDocumentSummaries();
+
+  /// Returns all stored chunks across all documents.
+  Future<List<Map<String, dynamic>>> getAllChunks();
 }

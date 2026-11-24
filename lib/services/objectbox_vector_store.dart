@@ -1,4 +1,5 @@
 import '../core/models/document_chunk.dart';
+import '../core/models/document_info.dart';
 import '../core/services/vector_store_service.dart';
 import '../objectbox.g.dart';
 
@@ -110,5 +111,39 @@ class ObjectBoxVectorStore implements VectorStoreService {
     } finally {
       query.close();
     }
+  }
+
+  @override
+  Future<List<DocumentInfo>> listDocumentSummaries() async {
+    final all = _checkedBox.getAll();
+    final Map<String, List<DocumentChunk>> grouped = {};
+    for (final chunk in all) {
+      grouped.putIfAbsent(chunk.documentId, () => []).add(chunk);
+    }
+    return grouped.entries.map((entry) {
+      final docId = entry.key;
+      final chunks = entry.value;
+      final fileName = chunks.first.fileName.isNotEmpty
+          ? chunks.first.fileName
+          : (docId.contains('/') || docId.contains(r'\')
+              ? docId.split(RegExp(r'[/\\]')).last
+              : docId);
+      return DocumentInfo(
+        documentId: docId,
+        fileName: fileName,
+        chunkCount: chunks.length,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllChunks() async {
+    final all = _checkedBox.getAll();
+    return all.map((chunk) => {
+      'documentId': chunk.documentId,
+      'fileName': chunk.fileName,
+      'chunkIndex': chunk.chunkIndex,
+      'chunkText': chunk.chunkText,
+    }).toList();
   }
 }
