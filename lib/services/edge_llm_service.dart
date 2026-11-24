@@ -32,6 +32,36 @@ class EdgeLlmService implements LlmService {
 
   bool get hasNativeModel => _hasNativeModel;
 
+  /// Dynamically detects the appropriate [ModelType] from the file path.
+  static ModelType detectModelType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.contains('gemma-4') || lower.contains('gemma4')) {
+      return ModelType.gemma4;
+    }
+    if (lower.contains('gemma')) {
+      return ModelType.gemmaIt;
+    }
+    if (lower.contains('qwen3.5') || lower.contains('qwen35')) {
+      return ModelType.qwen35;
+    }
+    if (lower.contains('qwen3')) {
+      return ModelType.qwen3;
+    }
+    if (lower.contains('qwen')) {
+      return ModelType.qwen;
+    }
+    if (lower.contains('deepseek')) {
+      return ModelType.deepSeek;
+    }
+    if (lower.contains('llama')) {
+      return ModelType.llama;
+    }
+    if (lower.contains('phi')) {
+      return ModelType.phi;
+    }
+    return ModelType.general;
+  }
+
   @override
   Future<void> initialize() async {
     if (modelPath != null) {
@@ -47,14 +77,32 @@ class EdgeLlmService implements LlmService {
       }
 
       try {
+        final detectedType = detectModelType(modelPath!);
+        debugPrint('EdgeLlmService: detected model type $detectedType for $modelPath');
+
         await FlutterEdgeAi.installModel(
-          modelType: ModelType.gemmaIt,
+          modelType: detectedType,
           fileType: ModelFileType.litertlm,
         )
             .fromFile(modelPath!)
             .install();
 
-        _model = await FlutterEdgeAi.getActiveModel(maxTokens: 4096);
+        // Attempt GPU acceleration first on device, falling back to CPU
+        try {
+          _model = await FlutterEdgeAi.getActiveModel(
+            maxTokens: 2048,
+            preferredBackend: PreferredBackend.gpu,
+          );
+          debugPrint('EdgeLlmService: active model loaded with GPU backend.');
+        } catch (gpuError) {
+          debugPrint('EdgeLlmService: GPU backend init failed ($gpuError), falling back to CPU...');
+          _model = await FlutterEdgeAi.getActiveModel(
+            maxTokens: 2048,
+            preferredBackend: PreferredBackend.cpu,
+          );
+          debugPrint('EdgeLlmService: active model loaded with CPU backend.');
+        }
+
         _hasNativeModel = true;
         debugPrint('EdgeLlmService: native model loaded successfully.');
       } catch (e) {
