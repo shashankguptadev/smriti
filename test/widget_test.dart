@@ -154,12 +154,20 @@ void main() {
       ),
     );
 
-    // Transition to inactive (when backgrounded / task switched)
+    // Transition to inactive (e.g. permission prompt or notification shade): must NOT unload LLM
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(ls.isReady, isTrue);
+
+    // Transition to paused via hidden (app moving to background): unloads LLM
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
     expect(ls.isReady, isFalse);
 
-    // Transition back to foreground (resumed)
+    // Transition back through hidden and inactive to foreground (resumed): re-warms LLM
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(ls.isReady, isTrue);

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/model_manager_provider.dart';
 import '../widgets/chat_bubble.dart';
+import 'model_manager_screen.dart';
 
 /// Screen for chatting with the offline knowledge base with streaming responses.
 class ChatScreen extends StatefulWidget {
@@ -48,14 +50,19 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool immediate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
+        final pos = _scrollController.position;
+        if (immediate || (pos.maxScrollExtent - pos.pixels) < 150) {
+          _scrollController.jumpTo(pos.maxScrollExtent);
+        } else {
+          _scrollController.animateTo(
+            pos.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
   }
@@ -69,11 +76,56 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (context, provider, _) {
           // Keep scrolling to bottom as streaming tokens arrive
           if (provider.isStreaming) {
-            _scrollToBottom();
+            _scrollToBottom(immediate: true);
           }
 
           return Column(
             children: [
+              Consumer<ModelManagerProvider>(
+                builder: (context, modelManager, _) {
+                  if (modelManager.hasRealModel) return const SizedBox.shrink();
+                  return Material(
+                    color: theme.colorScheme.secondaryContainer,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ModelManagerScreen(),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: theme.colorScheme.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Running in Mock Mode — Tap to set up an on-device AI model',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: theme.colorScheme.onSecondaryContainer,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
               Expanded(
                 child: provider.messages.isEmpty
                     ? Center(

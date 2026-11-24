@@ -32,8 +32,7 @@ class _SmritiAppState extends State<SmritiApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
 
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused) {
       // Unload memory-heavy LLM weights when app moves to background
       try {
         context.read<LlmService>().dispose();
