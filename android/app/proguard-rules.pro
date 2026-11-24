@@ -38,6 +38,11 @@
 -keep class com.syncfusion.** { *; }
 -dontwarn com.syncfusion.**
 
+# --- Google ML Kit Text Recognition (OCR) ---
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+
+
 # --- Preserve Enums & Line Numbers for Symbolication ---
 -keepclassmembers enum * {
     public static **[] values();
