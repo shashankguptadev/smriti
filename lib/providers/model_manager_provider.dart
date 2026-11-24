@@ -15,11 +15,18 @@ enum ModelStatus {
 /// [ChangeNotifier] managing on-device `.litertlm` model weight discovery,
 /// storage space checks, and file import.
 class ModelManagerProvider extends ChangeNotifier {
+  final Future<Directory> Function() _documentsDirResolver;
+
   ModelStatus _status = ModelStatus.checking;
   String? _activeModelPath;
   double _progress = 0.0;
   String? _errorMessage;
   int _modelSizeBytes = 0;
+
+  ModelManagerProvider({
+    Future<Directory> Function()? documentsDirectoryResolver,
+  }) : _documentsDirResolver =
+            documentsDirectoryResolver ?? getApplicationDocumentsDirectory;
 
   ModelStatus get status => _status;
   String? get activeModelPath => _activeModelPath;
@@ -35,7 +42,7 @@ class ModelManagerProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await _documentsDirResolver();
       final modelsDir = Directory(p.join(docDir.path, 'models'));
 
       if (!modelsDir.existsSync()) {
@@ -77,7 +84,7 @@ class ModelManagerProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await _documentsDirResolver();
       final modelsDir = Directory(p.join(docDir.path, 'models'));
       if (!modelsDir.existsSync()) {
         await modelsDir.create(recursive: true);
