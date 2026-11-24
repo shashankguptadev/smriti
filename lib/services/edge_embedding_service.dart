@@ -33,22 +33,48 @@ class EdgeEmbeddingService implements EmbeddingService {
 
   @override
   Future<List<double>> embed(String text) async {
-    // If real weights are verified on disk, compute embeddings;
-    // otherwise generate a unit-normalized vector to preserve app stability.
-    final random = math.Random(text.hashCode ^ (modelPath?.hashCode ?? 0));
-    final raw = List<double>.generate(
-      dimensions,
-      (_) => random.nextDouble() * 2.0 - 1.0,
-    );
+    // Generate a deterministic feature-hashed n-gram and word embedding
+    // that preserves semantic overlap, token frequency, and cosine similarity.
+    final vector = List<double>.filled(dimensions, 0.0);
+    final normalized = text.toLowerCase().trim();
+    if (normalized.isEmpty) return vector;
 
+    // 1. Word token projections
+    final words = normalized.split(RegExp(r'[^a-zA-Z0-9_-]+')).where((w) => w.isNotEmpty);
+    for (final word in words) {
+      final h = _fnv1aHash(word);
+      final idx = h.abs() % dimensions;
+      final sign = (h & 1 == 0) ? 1.0 : -1.0;
+      vector[idx] += 1.0 * sign;
+    }
+
+    // 2. Character 3-gram projections for subwords, spelling variants & acronyms
+    for (int i = 0; i <= normalized.length - 3; i++) {
+      final gram = normalized.substring(i, i + 3);
+      final h = _fnv1aHash(gram);
+      final idx = h.abs() % dimensions;
+      final sign = (h & 1 == 0) ? 0.5 : -0.5;
+      vector[idx] += sign;
+    }
+
+    // L2 Unit Normalization
     double sumSq = 0.0;
-    for (final v in raw) {
+    for (final v in vector) {
       sumSq += v * v;
     }
     final norm = math.sqrt(sumSq);
     if (norm == 0.0) return List<double>.filled(dimensions, 0.0);
 
-    return raw.map((v) => v / norm).toList();
+    return vector.map((v) => v / norm).toList();
+  }
+
+  static int _fnv1aHash(String s) {
+    int hash = 0x811c9dc5;
+    for (int i = 0; i < s.length; i++) {
+      hash ^= s.codeUnitAt(i);
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash;
   }
 
   @override

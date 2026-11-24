@@ -12,8 +12,8 @@ class LocalDocumentIngestor implements DocumentIngestor {
   final int chunkOverlap;
 
   const LocalDocumentIngestor({
-    this.chunkSize = 500,
-    this.chunkOverlap = 50,
+    this.chunkSize = 800,
+    this.chunkOverlap = 150,
   });
 
   @override
@@ -63,11 +63,12 @@ class LocalDocumentIngestor implements DocumentIngestor {
     return chunkText(fullText, chunkSize: chunkSize, chunkOverlap: chunkOverlap);
   }
 
-  /// Splits [text] into overlapping chunks of approximately [chunkSize] characters.
+  /// Splits [text] into overlapping chunks of approximately [chunkSize] characters,
+  /// preferring clean sentence, line, or word boundaries.
   static List<String> chunkText(
     String text, {
-    int chunkSize = 500,
-    int chunkOverlap = 50,
+    int chunkSize = 800,
+    int chunkOverlap = 150,
   }) {
     final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
     if (normalized.isEmpty) return [];
@@ -77,22 +78,65 @@ class LocalDocumentIngestor implements DocumentIngestor {
     }
 
     final chunks = <String>[];
-    final step = (chunkSize - chunkOverlap) > 0 ? (chunkSize - chunkOverlap) : 1;
     int start = 0;
 
     while (start < normalized.length) {
       int end = start + chunkSize;
-      if (end > normalized.length) {
-        end = normalized.length;
+      if (end >= normalized.length) {
+        final chunk = normalized.substring(start).trim();
+        if (chunk.isNotEmpty) {
+          chunks.add(chunk);
+        }
+        break;
       }
 
-      final chunk = normalized.substring(start, end).trim();
+      // Look for a clean boundary in the last 30% of the chunk window
+      final searchFrom = start + (chunkSize * 0.70).toInt();
+      int breakIndex = -1;
+
+      // 1. Double newline (paragraph)
+      final paragraphBreak = normalized.lastIndexOf('\n\n', end);
+      if (paragraphBreak >= searchFrom) {
+        breakIndex = paragraphBreak + 2;
+      } else {
+        // 2. Single newline
+        final lineBreak = normalized.lastIndexOf('\n', end);
+        if (lineBreak >= searchFrom) {
+          breakIndex = lineBreak + 1;
+        } else {
+          // 3. Sentence boundary (. ! ?)
+          final sentenceRegex = RegExp(r'[.!?]\s+');
+          final sub = normalized.substring(searchFrom, end);
+          final matches = sentenceRegex.allMatches(sub);
+          if (matches.isNotEmpty) {
+            breakIndex = searchFrom + matches.last.end;
+          } else {
+            // 4. Word boundary (space)
+            final spaceIndex = normalized.lastIndexOf(' ', end);
+            if (spaceIndex >= searchFrom) {
+              breakIndex = spaceIndex + 1;
+            }
+          }
+        }
+      }
+
+      final actualEnd = (breakIndex > start) ? breakIndex : end;
+      final chunk = normalized.substring(start, actualEnd).trim();
       if (chunk.isNotEmpty) {
         chunks.add(chunk);
       }
 
-      if (end >= normalized.length) break;
-      start += step;
+      // Compute step with overlap, snapping to a space if available
+      int nextStart = actualEnd - chunkOverlap;
+      if (nextStart <= start) {
+        nextStart = actualEnd;
+      } else {
+        final spaceAhead = normalized.indexOf(' ', nextStart);
+        if (spaceAhead != -1 && spaceAhead < actualEnd) {
+          nextStart = spaceAhead + 1;
+        }
+      }
+      start = nextStart;
     }
 
     return chunks;
