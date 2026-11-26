@@ -55,7 +55,7 @@ void main() {
     );
 
     // Verify the initial AppBar title is present (defaults to Chat tab)
-    expect(find.text('Smriti Chat'), findsOneWidget);
+    expect(find.text('Smriti'), findsOneWidget);
 
     // Verify NavigationBar destinations exist
     expect(find.text('Chat'), findsOneWidget);

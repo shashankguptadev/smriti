@@ -26,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedIndex == 0 ? 'Smriti Chat' : 'Knowledge Base'),
+        title: Text(_selectedIndex == 0 ? 'Smriti' : 'Knowledge Base'),
         actions: [
           IconButton(
             icon: const Icon(Icons.tune),

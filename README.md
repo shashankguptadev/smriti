@@ -1,7 +1,7 @@
 # Smriti — Offline Personal Knowledge Base (Android)
 
 <p align="center">
-  <b>100% Offline • Private • On-Device RAG • Material 3</b>
+  <b>100% Offline • Private • On-Device RAG</b>
 </p>
 
 ---
