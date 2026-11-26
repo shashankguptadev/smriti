@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/models/chat_message.dart';
-import 'source_citation_card.dart';
 
 /// Renders a message bubble for either the user or the assistant,
 /// including streaming indicators and source citation lists.
@@ -77,30 +76,7 @@ class ChatBubble extends StatelessWidget {
               ],
             ),
           ),
-          if (!isUser && message.sources.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.82,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    child: Text(
-                      'Sources (${message.sources.length})',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  ...message.sources.map((s) => SourceCitationCard(source: s)),
-                ],
-              ),
-            ),
-          ],
+
         ],
       ),
     );
