@@ -33,6 +33,15 @@ class EdgeLlmService implements LlmService {
 
   bool get hasNativeModel => _hasNativeModel;
 
+  /// Returns true if the file path matches a Gemma 4 model, which is
+  /// currently incompatible with this app version due to a flatbuffer
+  /// schema mismatch between the user's downloaded file and the SDK's
+  /// pinned revision. Users should use Qwen or DeepSeek instead.
+  static bool isGemma4File(String path) {
+    final lower = path.toLowerCase();
+    return lower.contains('gemma-4') || lower.contains('gemma4');
+  }
+
   /// Dynamically detects the appropriate [ModelType] from the file path.
   static ModelType detectModelType(String path) {
     final lower = path.toLowerCase();
@@ -82,6 +91,16 @@ class EdgeLlmService implements LlmService {
       }
 
       try {
+        // Gemma 4 models are incompatible with this SDK version due to a
+        // flatbuffer schema mismatch. Reject early with a clear message
+        // rather than crashing deep inside the LiteRT runtime.
+        if (isGemma4File(modelPath!)) {
+          throw UnsupportedError(
+            'Gemma 4 E2B-IT is not compatible with the current app version. '
+            'Please use Qwen3 0.6B or DeepSeek instead.',
+          );
+        }
+
         final detectedType = detectModelType(modelPath!);
         debugPrint('EdgeLlmService: detected model type $detectedType for $modelPath');
 
@@ -121,6 +140,8 @@ class EdgeLlmService implements LlmService {
         _hasNativeModel = true;
         debugPrint('EdgeLlmService: native model loaded successfully.');
       } catch (e) {
+        // Always rethrow UnsupportedError (unsupported model family) on all platforms.
+        if (e is UnsupportedError) rethrow;
         if (Platform.isAndroid) {
           debugPrint('EdgeLlmService: native install failed on Android: $e');
           _hasNativeModel = false;
