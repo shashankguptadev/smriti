@@ -77,7 +77,7 @@ void main() {
 
       expect(find.text('AI Model Setup'), findsOneWidget);
       expect(find.text('Download Model from Hugging Face'), findsOneWidget);
-      expect(find.text('Gemma 4 E2B (Recommended, ~2.41 GB)'), findsOneWidget);
+      expect(find.text('Gemma 4 E2B-IT — Currently Not Supported'), findsOneWidget);
     });
 
     testWidgets('mock mode banner displays in ChatScreen and navigates on tap',

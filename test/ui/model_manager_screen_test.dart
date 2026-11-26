@@ -24,8 +24,11 @@ void main() {
 
       expect(find.text('AI Model Setup'), findsOneWidget);
       expect(find.text('On-Device AI Engine'), findsOneWidget);
-      expect(find.text('Import .litertlm Model'), findsOneWidget);
+      // Redundant "Import" button was removed — only "Activate Downloaded Model" remains
+      expect(find.text('Import .litertlm Model'), findsNothing);
       expect(find.text('Activate Downloaded Model'), findsOneWidget);
+      // Gemma 4 is now shown as unsupported
+      expect(find.text('Gemma 4 E2B-IT — Currently Not Supported'), findsOneWidget);
     });
 
     testWidgets('skip button invokes onSetupComplete callback', (tester) async {
