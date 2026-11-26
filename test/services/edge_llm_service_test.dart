@@ -126,5 +126,29 @@ void main() {
       final answer = tokens.join();
       expect(answer, contains('could not find relevant information'));
     });
+
+    test('buildSystemPrompt allows general knowledge alongside document context', () {
+      final service = EdgeLlmService();
+
+      final emptyCtxPrompt = service.buildSystemPrompt(const []);
+      expect(emptyCtxPrompt, contains('own knowledge'));
+
+      final withCtxPrompt = service.buildSystemPrompt(['Exam starts at 9 AM.']);
+      expect(withCtxPrompt, contains('general knowledge'));
+      expect(withCtxPrompt, isNot(contains('I could not find this information in your uploaded documents.')));
+    });
+
+    test('buildUserPrompt does not restrict model to only provided context', () {
+      final service = EdgeLlmService();
+      final userPrompt = service.buildUserPrompt(
+        'What is photosynthesis?',
+        ['Exam starts at 9 AM.'],
+      );
+
+      expect(userPrompt, contains('Question: What is photosynthesis?'));
+      expect(userPrompt, contains('Exam starts at 9 AM.'));
+      expect(userPrompt, isNot(contains('using only the context provided')));
+      expect(userPrompt, contains('own general knowledge'));
+    });
   });
 }
