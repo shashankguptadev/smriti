@@ -8,7 +8,7 @@
 
 ## Overview
 
-**Smriti** (स्मृति — *memory / recollection*) is a private, completely offline personal knowledge base for Android. It lets you import your own documents (PDF, Markdown, plain text), indexes them into a local on-device vector database using HNSW indexing, and runs Retrieval-Augmented Generation (RAG) powered by on-device LiteRT language models.
+**Smriti** (स्मृति — *memory / recollection*) is a private, completely offline personal knowledge base. It lets you import your own documents (PDF, Markdown, plain text), indexes them into a local on-device vector database using HNSW indexing, and runs Retrieval-Augmented Generation (RAG) powered by on-device LiteRT language models.
 
 No telemetry, no cloud APIs, and zero network calls. All your data stays strictly on your device.
 
@@ -29,7 +29,7 @@ No telemetry, no cloud APIs, and zero network calls. All your data stays strictl
 
 | Layer | Technology |
 |---|---|
-| **Platform** | Android only (`minSdk = 24`, targetSdk 35) |
+| **Platform** | Currently Android only (`minSdk = 24`, targetSdk 35) |
 | **Framework** | Flutter (Material 3 Theme with Light/Dark support) |
 | **State Management** | `provider` (`ChangeNotifier` + `MultiProvider`) |
 | **Vector Database** | `objectbox` + `objectbox_flutter_libs` (HNSW Cosine Index) |
