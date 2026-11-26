@@ -30,56 +30,6 @@ class ModelManagerScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _pickAndImportModel(BuildContext context) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final provider = context.read<ModelManagerProvider>();
-
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      final path = result.files.first.path;
-      if (path == null) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text('Could not access selected file path.')),
-        );
-        return;
-      }
-
-      final lowerPath = path.toLowerCase();
-      if (!lowerPath.endsWith('.litertlm')) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Please select a valid .litertlm model file.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      final success = await provider.importLocalModel(File(path));
-      if (success) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Model weights imported successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        onSetupComplete?.call();
-      }
-    } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('Error selecting model: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   /// Lets the user pick an already-downloaded `.litertlm` from anywhere on
   /// the device and copies it to app-private storage so the LiteRT engine
   /// always gets a complete, stable file (not a truncated file_picker cache).
@@ -237,12 +187,6 @@ class ModelManagerScreen extends StatelessWidget {
                                   style: TextButton.styleFrom(foregroundColor: Colors.red),
                                   onPressed: () => provider.deleteActiveModel(),
                                 ),
-                                const Spacer(),
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.refresh, size: 18),
-                                  label: const Text('Replace'),
-                                  onPressed: () => _pickAndImportModel(context),
-                                ),
                               ],
                             ),
                           ],
@@ -331,14 +275,24 @@ class ModelManagerScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('Gemma 4 E2B (Recommended, ~2.41 GB)'),
-                            subtitle: const Text(
-                              'Pinned revision for this app version — download gemma-4-E2B-it.litertlm',
+                            enabled: false,
+                            leading: Icon(
+                              Icons.warning_amber_rounded,
+                              color: theme.colorScheme.error,
+                              size: 20,
                             ),
-                            trailing: const Icon(Icons.open_in_new, size: 20),
-                            onTap: () => _launchExternalUrl(
-                              context,
-                              'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/tree/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1',
+                            title: Text(
+                              'Gemma 4 E2B-IT — Currently Not Supported',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Incompatible with the current SDK version. '
+                              'Use Qwen or DeepSeek instead.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.outline,
+                              ),
                             ),
                           ),
                           const Divider(),
@@ -416,29 +370,6 @@ class ModelManagerScreen extends StatelessWidget {
                     'Already downloaded the model to your device? Pick the .litertlm file '
                     'from Downloads (or any folder). It will be copied to app storage '
                     'to give LiteRT a complete, stable file (~2.5 GB takes a moment).',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  // ── Option B: Copy/import model into app-private storage ──
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.file_upload_outlined),
-                      label: Text(provider.hasRealModel ? 'Replace with New Model' : 'Import .litertlm Model'),
-                      onPressed: provider.status == ModelStatus.importing
-                          ? null
-                          : () => _pickAndImportModel(context),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Same as above — both options copy the model to app-private storage.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
