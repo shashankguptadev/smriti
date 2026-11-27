@@ -119,6 +119,45 @@ void main() {
       final results = await store.query([1.0, 2.0], k: 5);
       expect(results, isEmpty);
     });
+
+    test('getChunksByDocumentId returns sorted chunks for the given doc', () async {
+      // Insert 2 chunks for doc-A (in reverse order) and 1 for doc-B.
+      await store.insert(
+        documentId: 'doc-A',
+        chunkText: 'Second chunk of A',
+        embedding: [0.1, 0.2],
+        chunkIndex: 1,
+      );
+      await store.insert(
+        documentId: 'doc-A',
+        chunkText: 'First chunk of A',
+        embedding: [0.3, 0.4],
+        chunkIndex: 0,
+      );
+      await store.insert(
+        documentId: 'doc-B',
+        chunkText: 'Only chunk of B',
+        embedding: [0.5, 0.6],
+        chunkIndex: 0,
+      );
+
+      final chunksA = await store.getChunksByDocumentId('doc-A');
+      expect(chunksA.length, equals(2));
+      // Must be sorted ascending by chunkIndex.
+      expect(chunksA[0]['chunkIndex'], equals(0));
+      expect(chunksA[0]['chunkText'], equals('First chunk of A'));
+      expect(chunksA[1]['chunkIndex'], equals(1));
+      expect(chunksA[1]['chunkText'], equals('Second chunk of A'));
+
+      // doc-B isolation.
+      final chunksB = await store.getChunksByDocumentId('doc-B');
+      expect(chunksB.length, equals(1));
+      expect(chunksB[0]['chunkText'], equals('Only chunk of B'));
+
+      // Non-existent doc returns empty list.
+      final chunksNone = await store.getChunksByDocumentId('doc-X');
+      expect(chunksNone, isEmpty);
+    });
   });
 }
 

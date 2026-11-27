@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/models/document_info.dart';
 import '../../providers/knowledge_base_provider.dart';
+import 'document_chunks_screen.dart';
 
 /// Screen for managing indexed documents, picking new files, and tracking ingestion progress.
 class DocumentsScreen extends StatelessWidget {
@@ -150,6 +151,15 @@ class DocumentsScreen extends StatelessWidget {
                         itemBuilder: (context, index) {
                           final doc = provider.documents[index];
                           return ListTile(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DocumentChunksScreen(
+                                  documentId: doc.documentId,
+                                  fileName: doc.fileName,
+                                ),
+                              ),
+                            ),
                             leading: CircleAvatar(
                               backgroundColor:
                                   theme.colorScheme.primaryContainer,
