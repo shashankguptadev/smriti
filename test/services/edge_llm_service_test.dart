@@ -17,6 +17,7 @@ void main() {
       }
     });
 
+    // ── Model detection ──────────────────────────────────────────────────
     test('detectModelType correctly identifies model families', () {
       expect(
         EdgeLlmService.detectModelType('models/gemma-4-E2B-it.litertlm'),
@@ -52,6 +53,22 @@ void main() {
       );
     });
 
+    test('isGemma4File correctly identifies Gemma 4 paths', () {
+      expect(
+        EdgeLlmService.isGemma4File('models/gemma-4-E2B-it.litertlm'),
+        isTrue,
+      );
+      expect(
+        EdgeLlmService.isGemma4File('gemma4-instruct.bin'),
+        isTrue,
+      );
+      expect(
+        EdgeLlmService.isGemma4File('deepseek-r1.litertlm'),
+        isFalse,
+      );
+    });
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
     test('initializes Gemma 4 file without throwing UnsupportedError', () async {
       final modelFile = File('${tempDir.path}/gemma-4-E2B-it.litertlm');
       await modelFile.writeAsBytes(List.filled(10 * 1024 * 1024 + 1, 42));
@@ -66,8 +83,6 @@ void main() {
 
     test('initializes and streams tokens with valid model file', () async {
       final modelFile = File('${tempDir.path}/model.litertlm');
-      // Write > 10 MB so it passes the minimum-size guard (real models are
-      // hundreds of MB; we simulate a valid file just large enough to pass).
       await modelFile.writeAsBytes(List.filled(10 * 1024 * 1024 + 1, 42));
 
       final service = EdgeLlmService(
@@ -100,11 +115,9 @@ void main() {
 
     test('throws FormatException if model file is corrupt or too small', () async {
       final modelFile = File('${tempDir.path}/small.litertlm');
-      await modelFile.writeAsBytes([1, 2, 3]); // corrupt / < 100 bytes
+      await modelFile.writeAsBytes([1, 2, 3]);
 
-      final service = EdgeLlmService(
-        modelPath: modelFile.path,
-      );
+      final service = EdgeLlmService(modelPath: modelFile.path);
 
       expect(() => service.initialize(), throwsA(isA<FormatException>()));
     });
@@ -122,18 +135,27 @@ void main() {
       expect(answer, contains('could not find relevant information'));
     });
 
-    test('buildSystemPrompt allows general knowledge alongside document context', () {
+    // ── System prompt ────────────────────────────────────────────────────
+    test('buildSystemPrompt includes no-evidence instruction when contextChunks is empty',
+        () {
       final service = EdgeLlmService();
 
       final emptyCtxPrompt = service.buildSystemPrompt(const []);
-      expect(emptyCtxPrompt, contains('own knowledge'));
-
-      final withCtxPrompt = service.buildSystemPrompt(['Exam starts at 9 AM.']);
-      expect(withCtxPrompt, contains('general knowledge'));
-      expect(withCtxPrompt, isNot(contains('I could not find this information in your uploaded documents.')));
+      // Must tell model to admit it couldn't find info, not to guess
+      expect(emptyCtxPrompt, contains('could not find this in the uploaded documents'));
     });
 
-    test('buildUserPrompt does not restrict model to only provided context', () {
+    test('buildSystemPrompt encourages cross-referencing when context is provided', () {
+      final service = EdgeLlmService();
+
+      final withCtxPrompt =
+          service.buildSystemPrompt(['Exam starts at 9 AM.']);
+      expect(withCtxPrompt, contains('Cross-reference'));
+      expect(withCtxPrompt, contains('general knowledge'));
+    });
+
+    // ── User prompt ──────────────────────────────────────────────────────
+    test('buildUserPrompt includes Question: label and instruction', () {
       final service = EdgeLlmService();
       final userPrompt = service.buildUserPrompt(
         'What is photosynthesis?',
@@ -143,7 +165,41 @@ void main() {
       expect(userPrompt, contains('Question: What is photosynthesis?'));
       expect(userPrompt, contains('Exam starts at 9 AM.'));
       expect(userPrompt, isNot(contains('using only the context provided')));
-      expect(userPrompt, contains('own general knowledge'));
+    });
+
+    test('buildUserPrompt includes fileName and chunkIndex label when provided', () {
+      final service = EdgeLlmService();
+      final userPrompt = service.buildUserPrompt(
+        'Tell me about OS.',
+        ['Operating Systems are complex.'],
+        fileNames: ['lecture_notes.pdf'],
+        chunkIndexes: [3],
+      );
+
+      expect(userPrompt, contains('[Excerpt 1 — lecture_notes.pdf, chunk 3]'));
+    });
+
+    test('buildUserPrompt falls back to [Excerpt N] label when metadata absent', () {
+      final service = EdgeLlmService();
+      final userPrompt = service.buildUserPrompt(
+        'Tell me about OS.',
+        ['Operating Systems are complex.'],
+      );
+
+      expect(userPrompt, contains('[Excerpt 1]'));
+      expect(userPrompt, isNot(contains('[Excerpt 1 —')));
+    });
+
+    test('buildUserPrompt respects 10 000 char context limit', () {
+      final service = EdgeLlmService();
+      // Create chunks whose combined length exceeds 10 000 chars
+      final bigChunks = List.generate(20, (i) => 'chunk $i: ${'word ' * 120}');
+      final prompt = service.buildUserPrompt('question?', bigChunks);
+
+      // The final prompt must not contain all 20 excerpts
+      expect(prompt, isNot(contains('[Excerpt 20]')));
+      // But it must contain at least the first excerpt
+      expect(prompt, contains('[Excerpt 1]'));
     });
   });
 }
