@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
-import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import '../core/services/llm_service.dart';
 
 /// Exception thrown when on-device inference fails due to insufficient memory.
@@ -32,15 +31,6 @@ class EdgeLlmService implements LlmService {
   bool get isReady => _isReady;
 
   bool get hasNativeModel => _hasNativeModel;
-
-  /// Returns true if the file path matches a Gemma 4 model, which is
-  /// currently incompatible with this app version due to a flatbuffer
-  /// schema mismatch between the user's downloaded file and the SDK's
-  /// pinned revision. Users should use Qwen or DeepSeek instead.
-  static bool isGemma4File(String path) {
-    final lower = path.toLowerCase();
-    return lower.contains('gemma-4') || lower.contains('gemma4');
-  }
 
   /// Dynamically detects the appropriate [ModelType] from the file path.
   static ModelType detectModelType(String path) {
@@ -91,16 +81,6 @@ class EdgeLlmService implements LlmService {
       }
 
       try {
-        // Gemma 4 models are incompatible with this SDK version due to a
-        // flatbuffer schema mismatch. Reject early with a clear message
-        // rather than crashing deep inside the LiteRT runtime.
-        if (isGemma4File(modelPath!)) {
-          throw UnsupportedError(
-            'Gemma 4 E2B-IT is not compatible with the current app version. '
-            'Please use Qwen3 0.6B or DeepSeek instead.',
-          );
-        }
-
         final detectedType = detectModelType(modelPath!);
         debugPrint('EdgeLlmService: detected model type $detectedType for $modelPath');
 
@@ -111,28 +91,24 @@ class EdgeLlmService implements LlmService {
             .fromFile(modelPath!)
             .install();
 
-        final ModelRuntimeDefaults? modelDefaults = detectedType == ModelType.gemma4
-            ? LiteRtLmModels.gemma4E2bIt.generic.runtimeDefaults
-            : null;
-
-        // Attempt GPU acceleration first on device, falling back to CPU
+        // Smriti performs text-only RAG; disable vision/audio encoders and
+        // keep context at 2048 tokens to stay within mobile RAM budgets and
+        // avoid Gemma 4 FP16 context degradation on Android GPU above 2048.
         try {
           _model = await FlutterEdgeAi.getActiveModel(
-            defaults: modelDefaults,
-            maxTokens: modelDefaults?.maxTokens ?? 2048,
+            maxTokens: 2048,
             preferredBackend: PreferredBackend.gpu,
-            supportImage: modelDefaults?.supportImage,
-            supportAudio: modelDefaults?.supportAudio,
+            supportImage: false,
+            supportAudio: false,
           );
           debugPrint('EdgeLlmService: active model loaded with GPU backend.');
         } catch (gpuError) {
           debugPrint('EdgeLlmService: GPU backend init failed ($gpuError), falling back to CPU...');
           _model = await FlutterEdgeAi.getActiveModel(
-            defaults: modelDefaults,
-            maxTokens: modelDefaults?.maxTokens ?? 2048,
+            maxTokens: 2048,
             preferredBackend: PreferredBackend.cpu,
-            supportImage: modelDefaults?.supportImage,
-            supportAudio: modelDefaults?.supportAudio,
+            supportImage: false,
+            supportAudio: false,
           );
           debugPrint('EdgeLlmService: active model loaded with CPU backend.');
         }
