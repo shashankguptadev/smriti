@@ -275,24 +275,14 @@ class ModelManagerScreen extends StatelessWidget {
                           const SizedBox(height: 12),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            enabled: false,
-                            leading: Icon(
-                              Icons.warning_amber_rounded,
-                              color: theme.colorScheme.error,
-                              size: 20,
+                            title: const Text('Gemma 4 E2B (Recommended, ~2.41 GB)'),
+                            subtitle: const Text(
+                              'Pinned revision for this app version — download gemma-4-E2B-it.litertlm',
                             ),
-                            title: Text(
-                              'Gemma 4 E2B-IT — Currently Not Supported',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Incompatible with the current SDK version. '
-                              'Use Qwen or DeepSeek instead.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.outline,
-                              ),
+                            trailing: const Icon(Icons.open_in_new, size: 20),
+                            onTap: () => _launchExternalUrl(
+                              context,
+                              'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/tree/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1',
                             ),
                           ),
                           const Divider(),
