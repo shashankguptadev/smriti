@@ -129,6 +129,20 @@ class InMemoryVectorStore implements VectorStoreService {
     }).toList();
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> getChunksByDocumentId(
+    String documentId,
+  ) async {
+    _checkState();
+    final filtered = _chunks
+        .where((c) => c.documentId == documentId)
+        .toList()
+      ..sort((a, b) => a.chunkIndex.compareTo(b.chunkIndex));
+    return filtered
+        .map((c) => {'chunkIndex': c.chunkIndex, 'chunkText': c.chunkText})
+        .toList();
+  }
+
   /// Calculates cosine distance (1.0 - cosine similarity). Range: [0.0, 2.0].
   double _cosineDistance(List<double> a, List<double> b) {
     if (a.length != b.length || a.isEmpty) return 2.0;

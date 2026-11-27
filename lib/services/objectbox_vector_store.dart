@@ -146,4 +146,22 @@ class ObjectBoxVectorStore implements VectorStoreService {
       'chunkText': chunk.chunkText,
     }).toList();
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> getChunksByDocumentId(
+    String documentId,
+  ) async {
+    final query = _checkedBox
+        .query(DocumentChunk_.documentId.equals(documentId))
+        .build();
+    try {
+      final results = query.find();
+      results.sort((a, b) => a.chunkIndex.compareTo(b.chunkIndex));
+      return results
+          .map((c) => {'chunkIndex': c.chunkIndex, 'chunkText': c.chunkText})
+          .toList();
+    } finally {
+      query.close();
+    }
+  }
 }

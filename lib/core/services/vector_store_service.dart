@@ -41,4 +41,8 @@ abstract class VectorStoreService {
 
   /// Returns all stored chunks across all documents.
   Future<List<Map<String, dynamic>>> getAllChunks();
+
+  /// Returns all chunks for a specific [documentId], sorted by [chunkIndex].
+  /// Each map contains 'chunkIndex' (int) and 'chunkText' (String).
+  Future<List<Map<String, dynamic>>> getChunksByDocumentId(String documentId);
 }
