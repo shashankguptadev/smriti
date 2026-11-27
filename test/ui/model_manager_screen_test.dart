@@ -27,8 +27,7 @@ void main() {
       // Redundant "Import" button was removed — only "Activate Downloaded Model" remains
       expect(find.text('Import .litertlm Model'), findsNothing);
       expect(find.text('Activate Downloaded Model'), findsOneWidget);
-      // Gemma 4 is now shown as unsupported
-      expect(find.text('Gemma 4 E2B-IT — Currently Not Supported'), findsOneWidget);
+      expect(find.text('Gemma 4 E2B (Recommended, ~2.41 GB)'), findsOneWidget);
     });
 
     testWidgets('skip button invokes onSetupComplete callback', (tester) async {

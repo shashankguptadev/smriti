@@ -52,21 +52,16 @@ void main() {
       );
     });
 
-    test('isGemma4File correctly identifies Gemma 4 files', () {
-      expect(EdgeLlmService.isGemma4File('gemma-4-E2B-it.litertlm'), isTrue);
-      expect(EdgeLlmService.isGemma4File('models/gemma-4-E2B-it.litertlm'), isTrue);
-      expect(EdgeLlmService.isGemma4File('gemma4-instruct.litertlm'), isTrue);
-      expect(EdgeLlmService.isGemma4File('qwen3-0.6b.litertlm'), isFalse);
-      expect(EdgeLlmService.isGemma4File('deepseek-r1.litertlm'), isFalse);
-      expect(EdgeLlmService.isGemma4File('gemma-2b-it.litertlm'), isFalse);
-    });
-
-    test('throws UnsupportedError when a Gemma 4 file is used', () async {
+    test('initializes Gemma 4 file without throwing UnsupportedError', () async {
       final modelFile = File('${tempDir.path}/gemma-4-E2B-it.litertlm');
       await modelFile.writeAsBytes(List.filled(10 * 1024 * 1024 + 1, 42));
 
-      final service = EdgeLlmService(modelPath: modelFile.path);
-      expect(() => service.initialize(), throwsA(isA<UnsupportedError>()));
+      final service = EdgeLlmService(
+        modelPath: modelFile.path,
+        tokenDelay: Duration.zero,
+      );
+      await service.initialize();
+      expect(service.isReady, isTrue);
     });
 
     test('initializes and streams tokens with valid model file', () async {
