@@ -190,16 +190,151 @@ void main() {
       expect(userPrompt, isNot(contains('[Excerpt 1 —')));
     });
 
-    test('buildUserPrompt respects 10 000 char context limit', () {
+    test('buildUserPrompt respects runtime-configurable maxContextChars limit', () {
       final service = EdgeLlmService();
-      // Create chunks whose combined length exceeds 10 000 chars
-      final bigChunks = List.generate(20, (i) => 'chunk $i: ${'word ' * 120}');
+      // Create chunks whose combined length exceeds the default 5 000 char budget
+      final bigChunks = List.generate(12, (i) => 'chunk $i: ${'word ' * 120}');
       final prompt = service.buildUserPrompt('question?', bigChunks);
 
-      // The final prompt must not contain all 20 excerpts
-      expect(prompt, isNot(contains('[Excerpt 20]')));
+      // The final prompt must not contain all 12 excerpts
+      expect(prompt, isNot(contains('[Excerpt 12]')));
       // But it must contain at least the first excerpt
       expect(prompt, contains('[Excerpt 1]'));
+
+      // Lowering maxContextChars at runtime further restricts included excerpts
+      service.maxContextChars = 1000;
+      final smallerPrompt = service.buildUserPrompt('question?', bigChunks);
+      expect(smallerPrompt.length, lessThan(prompt.length));
+      expect(smallerPrompt, isNot(contains('[Excerpt 4]')));
+    });
+
+    test('buildUserPrompt truncates an oversized single first chunk', () {
+      final service = EdgeLlmService(maxContextChars: 1000);
+      final hugeChunk = 'A' * 4000;
+      final prompt = service.buildUserPrompt('question?', [hugeChunk]);
+
+      expect(prompt, contains('[Excerpt 1]'));
+      expect(prompt.length, lessThan(1500));
+    });
+
+    test('buildUserPrompt reads dynamic maxContextCharsProvider', () {
+      int dynamicLimit = 1000;
+      final service = EdgeLlmService(
+        maxContextCharsProvider: () => dynamicLimit,
+      );
+      final chunks = List.generate(6, (i) => 'item $i: ${'x' * 500}');
+
+      final small = service.buildUserPrompt('q?', chunks);
+      dynamicLimit = 5000;
+      final larger = service.buildUserPrompt('q?', chunks);
+
+      expect(larger.length, greaterThan(small.length));
+    });
+
+    // ── Context overflow progressive retry ───────────────────────────────
+    test('retries with halved context when first attempt hits RESOURCE_EXHAUSTED',
+        () async {
+      int calls = 0;
+      final recordedPrompts = <String>[];
+
+      final service = EdgeLlmService(
+        maxContextChars: 4000,
+        debugSessionRunner: (systemPrompt, userPrompt) async* {
+          calls++;
+          recordedPrompts.add(userPrompt);
+          if (calls == 1) {
+            throw Exception(
+              'ContextLimitException: Stream error: RESOURCE_EXHAUSTED: 3574 >= 2048',
+            );
+          }
+          yield 'Recovered answer';
+        },
+      );
+
+      final chunks = List.generate(5, (i) => 'chunk $i: ${'data ' * 180}');
+      final tokens = await service
+          .generateResponse(prompt: 'Find exam', contextChunks: chunks)
+          .toList();
+
+      expect(calls, equals(2));
+      expect(tokens.join(), equals('Recovered answer'));
+      expect(recordedPrompts[1].length, lessThan(recordedPrompts[0].length));
+      expect(recordedPrompts[1], contains('[Excerpt 1]'));
+    });
+
+    test('falls back to question-only when halved context still overflows',
+        () async {
+      int calls = 0;
+      final recordedPrompts = <String>[];
+
+      final service = EdgeLlmService(
+        maxContextChars: 4000,
+        debugSessionRunner: (systemPrompt, userPrompt) async* {
+          calls++;
+          recordedPrompts.add(userPrompt);
+          if (calls <= 2) {
+            throw Exception('RESOURCE_EXHAUSTED: Input token ids are too long');
+          }
+          yield 'Question-only answer';
+        },
+      );
+
+      final chunks = List.generate(5, (i) => 'chunk $i: ${'data ' * 180}');
+      final tokens = await service
+          .generateResponse(prompt: 'Find exam', contextChunks: chunks)
+          .toList();
+
+      expect(calls, equals(3));
+      expect(tokens.join(), equals('Question-only answer'));
+      expect(recordedPrompts[2], equals('Find exam'));
+    });
+
+    test('throws ContextLimitException preserving SDK message if all retries fail',
+        () async {
+      const sdkError =
+          'Stream error: RESOURCE_EXHAUSTED: Input token ids are too long. 3575 >= 2048';
+      final service = EdgeLlmService(
+        debugSessionRunner: (systemPrompt, userPrompt) async* {
+          throw Exception(sdkError);
+        },
+      );
+
+      await expectLater(
+        service
+            .generateResponse(prompt: 'Find exam', contextChunks: ['chunk 1'])
+            .toList(),
+        throwsA(
+          isA<ContextLimitException>().having(
+            (e) => e.toString(),
+            'toString',
+            contains(sdkError),
+          ),
+        ),
+      );
+    });
+
+    test('does not retry on non-context native inference errors', () async {
+      int calls = 0;
+      final service = EdgeLlmService(
+        debugSessionRunner: (systemPrompt, userPrompt) async* {
+          calls++;
+          throw Exception('GPU delegate failure');
+        },
+      );
+
+      await expectLater(
+        service
+            .generateResponse(prompt: 'Find exam', contextChunks: ['chunk 1'])
+            .toList(),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'toString',
+            contains('GPU delegate failure'),
+          ),
+        ),
+      );
+      expect(calls, equals(1));
     });
   });
 }

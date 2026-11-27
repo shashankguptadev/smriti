@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import '../core/services/llm_service.dart';
@@ -16,19 +17,32 @@ class LowMemoryException implements Exception {
 /// Concrete [LlmService] executing on-device `.litertlm` models via [FlutterEdgeAi]
 /// with real token streaming, prompt grounding, and fallback guards for host environments.
 ///
-/// ## v2 Prompt Engineering Improvements
-/// - **Larger context window:** `maxContextChars` raised 8 000 → 10 000 characters,
-///   fitting more retrieved chunks without exceeding the 2 048-token GPU budget.
-/// - **Score-aware system prompt:** when context chunks are available the model
-///   is explicitly asked to cross-reference excerpts and synthesise across them.
-/// - **No-evidence instruction:** when no context chunks are provided (all chunks
-///   below the retrieval score threshold) the system prompt tells the model to
-///   clearly state it did not find the information in the user's documents.
-/// - **Richer excerpt labels:** each excerpt is now labelled with its file name
-///   and chunk index (`[Excerpt N — filename, chunk C]`) for better grounding.
+/// ## Context Window & Budget Management
+/// - Loads the model with `maxTokens: 4096` (falling back to `2048` if rejected
+///   by the backend, GPU-first then CPU).
+/// - Exposes a runtime-configurable [maxContextChars] budget (default `5000` chars)
+///   so prompts stay well within the active token window.
+/// - Automatically retries on `RESOURCE_EXHAUSTED` / `ContextLimitException`
+///   with halved context and then question-only fallback before surfacing the
+///   underlying SDK error.
 class EdgeLlmService implements LlmService {
+  static const int defaultMaxTokens = 4096;
+  static const int fallbackMaxTokens = 2048;
+  static const int defaultMaxContextChars = 5000;
+  static const int minContextChars = 1000;
+  static const int maxContextCharsLimit = 12000;
+
   final String? modelPath;
   final Duration tokenDelay;
+  final int Function()? _maxContextCharsProvider;
+
+  /// Optional test hook overriding native session streaming.
+  @visibleForTesting
+  final Stream<String> Function(String systemPrompt, String userPrompt)?
+      debugSessionRunner;
+
+  int _maxContextChars;
+  int _effectiveMaxTokens = defaultMaxTokens;
   bool _isReady = false;
   InferenceModel? _model;
   bool _hasNativeModel = false;
@@ -36,12 +50,45 @@ class EdgeLlmService implements LlmService {
   EdgeLlmService({
     this.modelPath,
     this.tokenDelay = const Duration(milliseconds: 15),
-  });
+    int maxContextChars = defaultMaxContextChars,
+    int Function()? maxContextCharsProvider,
+    @visibleForTesting this.debugSessionRunner,
+  })  : _maxContextChars = maxContextChars.clamp(
+          minContextChars,
+          maxContextCharsLimit,
+        ),
+        _maxContextCharsProvider = maxContextCharsProvider;
 
   @override
   bool get isReady => _isReady;
 
   bool get hasNativeModel => _hasNativeModel;
+
+  /// The token budget the active model was successfully initialized with.
+  int get effectiveMaxTokens => _effectiveMaxTokens;
+
+  /// Current configured context character budget (reads dynamic provider if set).
+  int get maxContextChars =>
+      (_maxContextCharsProvider?.call() ?? _maxContextChars)
+          .clamp(minContextChars, maxContextCharsLimit);
+
+  /// Updates the runtime context character budget when no external provider is set.
+  set maxContextChars(int value) {
+    _maxContextChars = value.clamp(minContextChars, maxContextCharsLimit);
+  }
+
+  /// Context character limit adjusted for [_effectiveMaxTokens] when the backend
+  /// fell back to 2048 tokens.
+  int get effectiveMaxContextChars {
+    final configured = maxContextChars;
+    if (_effectiveMaxTokens < defaultMaxTokens) {
+      final safeFor2048 = ((_effectiveMaxTokens - 700) * 2.5)
+          .round()
+          .clamp(minContextChars, maxContextCharsLimit);
+      return math.min(configured, safeFor2048);
+    }
+    return configured;
+  }
 
   /// Dynamically detects the appropriate [ModelType] from the file path.
   static ModelType detectModelType(String path) {
@@ -107,28 +154,41 @@ class EdgeLlmService implements LlmService {
             .fromFile(modelPath!)
             .install();
 
-        // Smriti performs text-only RAG; disable vision/audio encoders and
-        // keep context at 2048 tokens to stay within mobile RAM budgets and
-        // avoid Gemma 4 FP16 context degradation on Android GPU above 2048.
-        try {
-          _model = await FlutterEdgeAi.getActiveModel(
-            maxTokens: 2048,
-            preferredBackend: PreferredBackend.gpu,
-            supportImage: false,
-            supportAudio: false,
-          );
-          debugPrint('EdgeLlmService: active model loaded with GPU backend.');
-        } catch (gpuError) {
-          debugPrint(
-            'EdgeLlmService: GPU backend init failed ($gpuError), falling back to CPU...',
-          );
-          _model = await FlutterEdgeAi.getActiveModel(
-            maxTokens: 2048,
-            preferredBackend: PreferredBackend.cpu,
-            supportImage: false,
-            supportAudio: false,
-          );
-          debugPrint('EdgeLlmService: active model loaded with CPU backend.');
+        // Smriti performs text-only RAG; disable vision/audio encoders and try
+        // 4096 tokens first (with 2048 fallback) across GPU-first then CPU.
+        const loadCandidates = <(PreferredBackend, int)>[
+          (PreferredBackend.gpu, defaultMaxTokens),
+          (PreferredBackend.gpu, fallbackMaxTokens),
+          (PreferredBackend.cpu, defaultMaxTokens),
+          (PreferredBackend.cpu, fallbackMaxTokens),
+        ];
+
+        _model = null;
+        Object? lastLoadError;
+        for (final (backend, maxTokens) in loadCandidates) {
+          try {
+            _model = await FlutterEdgeAi.getActiveModel(
+              maxTokens: maxTokens,
+              preferredBackend: backend,
+              supportImage: false,
+              supportAudio: false,
+            );
+            _effectiveMaxTokens = maxTokens;
+            debugPrint(
+              'EdgeLlmService: active model loaded with ${backend.name} backend '
+              '(maxTokens: $maxTokens).',
+            );
+            break;
+          } catch (e) {
+            lastLoadError = e;
+            debugPrint(
+              'EdgeLlmService: ${backend.name} backend init failed at '
+              'maxTokens=$maxTokens ($e), trying next fallback...',
+            );
+          }
+        }
+        if (_model == null && lastLoadError != null) {
+          throw lastLoadError;
         }
 
         _hasNativeModel = true;
@@ -187,14 +247,15 @@ class EdgeLlmService implements LlmService {
   /// Builds a structured user prompt with numbered, labelled document excerpts.
   ///
   /// Each excerpt is labelled with its source file name and chunk index so the
-  /// model has clear grounding anchors. `maxContextChars` is raised to 10 000
-  /// (from 8 000) to fit more retrieved content within the 2 048-token budget.
+  /// model has clear grounding anchors. Total excerpt characters are bounded by
+  /// [maxContextCharsOverride] or [effectiveMaxContextChars].
   @visibleForTesting
   String buildUserPrompt(
     String prompt,
     List<String> contextChunks, {
     List<String>? fileNames,
     List<int>? chunkIndexes,
+    int? maxContextCharsOverride,
   }) {
     if (contextChunks.isEmpty) return prompt;
 
@@ -202,17 +263,18 @@ class EdgeLlmService implements LlmService {
     buffer.writeln('Context from uploaded documents:');
     buffer.writeln('---');
     int totalChars = 0;
-    const maxContextChars = 10000;
+    final limit = maxContextCharsOverride ?? effectiveMaxContextChars;
 
     for (int i = 0; i < contextChunks.length; i++) {
       final trimmed = contextChunks[i].trim();
       if (trimmed.isEmpty) continue;
-      if (totalChars + trimmed.length > maxContextChars && totalChars > 0) {
-        final remaining = maxContextChars - totalChars;
-        if (remaining > 100) {
+      if (totalChars + trimmed.length > limit) {
+        final remaining = limit - totalChars;
+        if (remaining > 100 || totalChars == 0) {
+          final sliceLen = math.min(trimmed.length, math.max(100, remaining));
           final label = _excerptLabel(i, fileNames, chunkIndexes);
           buffer.writeln(label);
-          buffer.writeln(trimmed.substring(0, remaining));
+          buffer.writeln(trimmed.substring(0, sliceLen));
         }
         break;
       }
@@ -252,6 +314,15 @@ class EdgeLlmService implements LlmService {
   // Inference
   // ─────────────────────────────────────────────────────────────────────────
 
+  static bool _isContextLimitError(Object error) {
+    if (error is ContextLimitException) return true;
+    final msg = error.toString();
+    return msg.contains('RESOURCE_EXHAUSTED') ||
+        msg.contains('ContextLimitException') ||
+        msg.contains('input token count does not fit') ||
+        msg.contains('Input token ids are too long');
+  }
+
   @override
   Stream<String> generateResponse({
     required String prompt,
@@ -263,38 +334,110 @@ class EdgeLlmService implements LlmService {
       await initialize();
     }
 
-    final systemPrompt = buildSystemPrompt(contextChunks);
-    final userPrompt = buildUserPrompt(
-      prompt,
-      contextChunks,
-      fileNames: fileNames,
-      chunkIndexes: chunkIndexes,
-    );
-
-    if (_hasNativeModel && _model != null) {
-      InferenceModelSession? session;
+    final useNative =
+        (_hasNativeModel && _model != null) || debugSessionRunner != null;
+    if (useNative) {
       try {
-        session = await _model!.openSession(
-          systemInstruction: systemPrompt,
-          temperature: 0.5,
-          topP: 0.85,
+        yield* _generateWithContextRetry(
+          prompt: prompt,
+          contextChunks: contextChunks,
+          fileNames: fileNames,
+          chunkIndexes: chunkIndexes,
         );
-        await session.addQueryChunk(Message.text(text: userPrompt, isUser: true));
-        yield* session.getResponseAsync();
       } on OutOfMemoryError {
         throw const LowMemoryException('Out of memory while generating response.');
       } catch (e) {
-        if (e is LowMemoryException) rethrow;
+        if (e is LowMemoryException || e is ContextLimitException) rethrow;
         debugPrint('EdgeLlmService native inference error: $e');
-        if (Platform.isAndroid) {
+        if (Platform.isAndroid || debugSessionRunner != null) {
           throw Exception('LiteRT on-device inference error: $e');
         }
         yield* _hostFallbackStream(prompt, contextChunks);
-      } finally {
-        await session?.close();
       }
     } else {
       yield* _hostFallbackStream(prompt, contextChunks);
+    }
+  }
+
+  Stream<String> _generateWithContextRetry({
+    required String prompt,
+    required List<String> contextChunks,
+    List<String>? fileNames,
+    List<int>? chunkIndexes,
+  }) async* {
+    final baseBudget = effectiveMaxContextChars;
+    final attempts = <(List<String>, int?)>[
+      (contextChunks, null),
+      if (contextChunks.isNotEmpty)
+        (contextChunks, math.max(500, baseBudget ~/ 2)),
+      if (contextChunks.isNotEmpty) (const [], 0),
+    ];
+
+    Object? lastContextError;
+    for (int idx = 0; idx < attempts.length; idx++) {
+      final (attemptChunks, charBudget) = attempts[idx];
+      final systemPrompt = buildSystemPrompt(attemptChunks);
+      final userPrompt = buildUserPrompt(
+        prompt,
+        attemptChunks,
+        fileNames: fileNames,
+        chunkIndexes: chunkIndexes,
+        maxContextCharsOverride: charBudget,
+      );
+
+      bool emittedAnyToken = false;
+      try {
+        await for (final token in _runSingleNativeSession(
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+        )) {
+          emittedAnyToken = true;
+          yield token;
+        }
+        return;
+      } catch (e) {
+        if (!emittedAnyToken && _isContextLimitError(e)) {
+          lastContextError = e;
+          debugPrint(
+            'EdgeLlmService: context limit hit on attempt '
+            '${idx + 1}/${attempts.length} ($e)',
+          );
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    if (lastContextError != null) {
+      if (lastContextError is ContextLimitException) {
+        throw lastContextError;
+      }
+      throw ContextLimitException(lastContextError.toString());
+    }
+  }
+
+  Stream<String> _runSingleNativeSession({
+    required String systemPrompt,
+    required String userPrompt,
+  }) async* {
+    if (debugSessionRunner != null) {
+      yield* debugSessionRunner!(systemPrompt, userPrompt);
+      return;
+    }
+
+    InferenceModelSession? session;
+    try {
+      session = await _model!.openSession(
+        systemInstruction: systemPrompt,
+        temperature: 0.5,
+        topP: 0.85,
+      );
+      await session.addQueryChunk(Message.text(text: userPrompt, isUser: true));
+      yield* session.getResponseAsync();
+    } finally {
+      try {
+        await session?.close();
+      } catch (_) {}
     }
   }
 
