@@ -65,7 +65,7 @@ class ChatBubble extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Thinking...',
+                        message.loadingText ?? 'Thinking...',
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontStyle: FontStyle.italic,
                           color: textColor.withValues(alpha: 0.7),

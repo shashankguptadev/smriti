@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:smriti/core/services/llm_service.dart';
 import 'package:smriti/providers/chat_provider.dart';
+import 'package:smriti/providers/model_manager_provider.dart';
 import 'package:smriti/services/in_memory_vector_store.dart';
 import 'package:smriti/services/mock_embedding_service.dart';
 import 'package:smriti/services/mock_llm_service.dart';
@@ -118,6 +120,65 @@ void main() {
 
       expect(errorProvider.errorMessage, isNull);
       expect(find.byIcon(Icons.close), findsNothing);
+    });
+
+    testWidgets(
+        'renders "Model is loading..." bubble and transitions to greeting when ready',
+        (tester) async {
+      final tempDir = Directory.systemTemp.createTempSync('cs_mm_');
+      addTearDown(() {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      });
+      final modelFile = File('${tempDir.path}/models/qwen.litertlm');
+      modelFile.createSync(recursive: true);
+      modelFile.writeAsStringSync('weights');
+
+      final mm = ModelManagerProvider(
+        documentsDirectoryResolver: () async => tempDir,
+      );
+      await tester.runAsync(() => mm.checkModelAvailability());
+      mm.setModelLoadingInBackground(true);
+
+      final vs = InMemoryVectorStore();
+      await vs.initialize();
+      final rag = RagService(
+        embeddingService: const MockEmbeddingService(),
+        vectorStoreService: vs,
+        llmService: MockLlmService(tokenDelay: Duration.zero),
+      );
+      final loadingChatProvider =
+          ChatProvider(ragService: rag, modelManager: mm);
+      addTearDown(loadingChatProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ModelManagerProvider>.value(value: mm),
+              ChangeNotifierProvider<ChatProvider>.value(
+                value: loadingChatProvider,
+              ),
+            ],
+            child: const ChatScreen(),
+          ),
+        ),
+      );
+
+      expect(find.text('Model is loading...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.text('Running in Mock Mode — Tap to activate or import an AI model'),
+        findsNothing,
+      );
+
+      mm.setModelLoadingInBackground(false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Model is loading...'), findsNothing);
+      expect(
+        find.text('Hello, I am Smriti. Your offline personal knowledge assistant'),
+        findsOneWidget,
+      );
     });
   });
 }

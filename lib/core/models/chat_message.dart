@@ -38,6 +38,7 @@ class ChatMessage {
   String text;
   final List<CitationSource> sources;
   bool isStreaming;
+  final String? loadingText;
   final DateTime timestamp;
 
   ChatMessage({
@@ -46,6 +47,7 @@ class ChatMessage {
     required this.text,
     List<CitationSource>? sources,
     this.isStreaming = false,
+    this.loadingText,
     DateTime? timestamp,
   })  : id = id ?? DateTime.now().microsecondsSinceEpoch.toString(),
         sources = sources ?? const [],

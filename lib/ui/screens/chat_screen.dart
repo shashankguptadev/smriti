@@ -84,7 +84,9 @@ class _ChatScreenState extends State<ChatScreen> {
               Builder(
                 builder: (context) {
                   final modelManager = Provider.of<ModelManagerProvider?>(context);
-                  if (modelManager == null || modelManager.hasRealModel) {
+                  if (modelManager == null ||
+                      modelManager.hasRealModel ||
+                      modelManager.isModelLoadingInBackground) {
                     return const SizedBox.shrink();
                   }
                   return Material(

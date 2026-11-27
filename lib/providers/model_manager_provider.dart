@@ -28,6 +28,7 @@ class ModelManagerProvider extends ChangeNotifier {
   String? _errorMessage;
   int _modelSizeBytes = 0;
   int _maxContextChars = EdgeLlmService.defaultMaxContextChars;
+  bool _isModelLoadingInBackground = false;
   Future<void> _persistChain = Future<void>.value();
 
   ModelManagerProvider({
@@ -41,8 +42,16 @@ class ModelManagerProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   int get modelSizeBytes => _modelSizeBytes;
   int get maxContextChars => _maxContextChars;
+  bool get isModelLoadingInBackground => _isModelLoadingInBackground;
   bool get hasRealModel => _status == ModelStatus.ready && _activeModelPath != null;
   bool get isModelReady => _status == ModelStatus.ready || _status == ModelStatus.mockBypass;
+
+  /// Marks whether the native LiteRT model is currently loading in the background.
+  void setModelLoadingInBackground(bool value) {
+    if (_isModelLoadingInBackground == value) return;
+    _isModelLoadingInBackground = value;
+    notifyListeners();
+  }
 
   /// Updates the runtime context character budget used by [EdgeLlmService]
   /// and persists it sequentially (best-effort) to app documents storage.
@@ -213,12 +222,14 @@ class ModelManagerProvider extends ChangeNotifier {
     _errorMessage = message;
     _activeModelPath = null;
     _modelSizeBytes = 0;
+    _isModelLoadingInBackground = false;
     notifyListeners();
   }
 
   /// Sets the provider to ready state via mock bypass mode.
   void useMockOrBypass() {
     _status = ModelStatus.mockBypass;
+    _isModelLoadingInBackground = false;
     notifyListeners();
   }
 
@@ -234,6 +245,7 @@ class ModelManagerProvider extends ChangeNotifier {
     } catch (_) {}
     _activeModelPath = null;
     _modelSizeBytes = 0;
+    _isModelLoadingInBackground = false;
     _status = ModelStatus.missing;
     notifyListeners();
   }

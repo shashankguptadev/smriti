@@ -75,5 +75,20 @@ void main() {
       await freshProvider.checkModelAvailability();
       expect(freshProvider.maxContextChars, equals(6500));
     });
+
+    test('tracks background loading flag and resets it on error or mock bypass',
+        () {
+      expect(provider.isModelLoadingInBackground, isFalse);
+
+      provider.setModelLoadingInBackground(true);
+      expect(provider.isModelLoadingInBackground, isTrue);
+
+      provider.setEngineError('Load failed');
+      expect(provider.isModelLoadingInBackground, isFalse);
+
+      provider.setModelLoadingInBackground(true);
+      provider.useMockOrBypass();
+      expect(provider.isModelLoadingInBackground, isFalse);
+    });
   });
 }

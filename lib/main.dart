@@ -110,6 +110,7 @@ void main() async {
       'AI model loading in background — the app is ready to use now!',
       0.80,
     );
+    modelManager.setModelLoadingInBackground(true);
     // Load in background; app is fully usable in mock mode in the meantime.
     unawaited(_loadLlmInBackground(
       modelPath: modelManager.activeModelPath!,
@@ -140,6 +141,7 @@ void main() async {
     lastModelPath = currentPath;
 
     if (currentHasReal) {
+      modelManager.setModelLoadingInBackground(true);
       final edge = EdgeLlmService(
         modelPath: currentPath,
         maxContextCharsProvider: () => modelManager.maxContextChars,
@@ -147,6 +149,7 @@ void main() async {
       try {
         await edge.initialize();
         switchableLlm.switchTo(edge);
+        modelManager.setModelLoadingInBackground(false);
         debugPrint('main: EdgeLlmService initialized and hot-swapped in.');
       } catch (e) {
         debugPrint('main: EdgeLlmService.initialize() failed: $e');
@@ -162,6 +165,7 @@ void main() async {
       final mock = MockLlmService();
       await mock.initialize();
       switchableLlm.switchTo(mock);
+      modelManager.setModelLoadingInBackground(false);
     }
   });
 
@@ -185,7 +189,10 @@ void main() async {
           )..loadDocuments(),
         ),
         ChangeNotifierProvider<ChatProvider>(
-          create: (_) => ChatProvider(ragService: ragService),
+          create: (_) => ChatProvider(
+            ragService: ragService,
+            modelManager: modelManager,
+          ),
         ),
       ],
       child: const SmritiApp(),
@@ -207,6 +214,7 @@ Future<void> _loadLlmInBackground({
   try {
     await edge.initialize();
     switchableLlm.switchTo(edge);
+    modelManager.setModelLoadingInBackground(false);
     debugPrint('main: background EdgeLlmService hot-swapped in successfully.');
   } catch (e) {
     debugPrint('main: background EdgeLlmService.initialize() failed: $e');

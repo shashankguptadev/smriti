@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smriti/core/models/chat_message.dart';
 import 'package:smriti/core/services/llm_service.dart';
 import 'package:smriti/providers/chat_provider.dart';
+import 'package:smriti/providers/model_manager_provider.dart';
 import 'package:smriti/services/in_memory_vector_store.dart';
 import 'package:smriti/services/mock_embedding_service.dart';
 import 'package:smriti/services/mock_llm_service.dart';
@@ -121,6 +123,67 @@ void main() {
       failingProvider.clearError();
       expect(failingProvider.errorMessage, isNull);
       expect(failingProvider.status, equals(ChatStatus.idle));
+    });
+
+    test('shows "Model is loading..." then greeting when real model loads',
+        () async {
+      final tempDir = await Directory.systemTemp.createTemp('cp_mm_');
+      addTearDown(() async {
+        if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+      });
+      final modelFile = File('${tempDir.path}/models/qwen.litertlm');
+      await modelFile.create(recursive: true);
+      await modelFile.writeAsString('weights');
+
+      final mm = ModelManagerProvider(
+        documentsDirectoryResolver: () async => tempDir,
+      );
+      await mm.checkModelAvailability();
+      mm.setModelLoadingInBackground(true);
+
+      final provider = ChatProvider(ragService: ragService, modelManager: mm);
+      addTearDown(provider.dispose);
+
+      expect(provider.messages.length, equals(1));
+      expect(provider.messages.first.isStreaming, isTrue);
+      expect(provider.messages.first.loadingText, equals('Model is loading...'));
+      expect(provider.messages.first.text, isEmpty);
+
+      mm.setModelLoadingInBackground(false);
+
+      expect(provider.messages.length, equals(1));
+      expect(provider.messages.first.isStreaming, isFalse);
+      expect(
+        provider.messages.first.text,
+        equals('Hello, I am Smriti. Your offline personal knowledge assistant'),
+      );
+    });
+
+    test('removes loading bubble and surfaces error if background load fails',
+        () async {
+      final tempDir = await Directory.systemTemp.createTemp('cp_err_');
+      addTearDown(() async {
+        if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+      });
+      final modelFile = File('${tempDir.path}/models/qwen.litertlm');
+      await modelFile.create(recursive: true);
+      await modelFile.writeAsString('weights');
+
+      final mm = ModelManagerProvider(
+        documentsDirectoryResolver: () async => tempDir,
+      );
+      await mm.checkModelAvailability();
+      mm.setModelLoadingInBackground(true);
+
+      final provider = ChatProvider(ragService: ragService, modelManager: mm);
+      addTearDown(provider.dispose);
+
+      expect(provider.messages.length, equals(1));
+
+      mm.setEngineError('Model failed to load: corrupt file');
+
+      expect(provider.messages, isEmpty);
+      expect(provider.errorMessage, contains('corrupt file'));
     });
   });
 }
