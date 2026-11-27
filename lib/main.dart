@@ -126,9 +126,24 @@ void main() async {
   );
 
   // Listen for model changes from the Model Manager UI and hot-swap.
+  // Track the last active model state so unrelated updates (e.g. context
+  // budget slider adjustments) do not trigger redundant model reloads.
+  bool lastHasRealModel = modelManager.hasRealModel;
+  String? lastModelPath = modelManager.activeModelPath;
   modelManager.addListener(() async {
-    if (modelManager.hasRealModel) {
-      final edge = EdgeLlmService(modelPath: modelManager.activeModelPath);
+    final currentHasReal = modelManager.hasRealModel;
+    final currentPath = modelManager.activeModelPath;
+    if (currentHasReal == lastHasRealModel && currentPath == lastModelPath) {
+      return;
+    }
+    lastHasRealModel = currentHasReal;
+    lastModelPath = currentPath;
+
+    if (currentHasReal) {
+      final edge = EdgeLlmService(
+        modelPath: currentPath,
+        maxContextCharsProvider: () => modelManager.maxContextChars,
+      );
       try {
         await edge.initialize();
         switchableLlm.switchTo(edge);
@@ -185,7 +200,10 @@ Future<void> _loadLlmInBackground({
   required SwitchableLlmService switchableLlm,
   required ModelManagerProvider modelManager,
 }) async {
-  final edge = EdgeLlmService(modelPath: modelPath);
+  final edge = EdgeLlmService(
+    modelPath: modelPath,
+    maxContextCharsProvider: () => modelManager.maxContextChars,
+  );
   try {
     await edge.initialize();
     switchableLlm.switchTo(edge);

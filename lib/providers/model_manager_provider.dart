@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../services/edge_llm_service.dart';
 
 /// Status of the local LLM model weights.
 enum ModelStatus {
@@ -25,6 +27,8 @@ class ModelManagerProvider extends ChangeNotifier {
   double _progress = 0.0;
   String? _errorMessage;
   int _modelSizeBytes = 0;
+  int _maxContextChars = EdgeLlmService.defaultMaxContextChars;
+  Future<void> _persistChain = Future<void>.value();
 
   ModelManagerProvider({
     Future<Directory> Function()? documentsDirectoryResolver,
@@ -36,8 +40,49 @@ class ModelManagerProvider extends ChangeNotifier {
   double get progress => _progress;
   String? get errorMessage => _errorMessage;
   int get modelSizeBytes => _modelSizeBytes;
+  int get maxContextChars => _maxContextChars;
   bool get hasRealModel => _status == ModelStatus.ready && _activeModelPath != null;
   bool get isModelReady => _status == ModelStatus.ready || _status == ModelStatus.mockBypass;
+
+  /// Updates the runtime context character budget used by [EdgeLlmService]
+  /// and persists it sequentially (best-effort) to app documents storage.
+  Future<void> setMaxContextChars(int value) {
+    final clamped = value.clamp(
+      EdgeLlmService.minContextChars,
+      EdgeLlmService.maxContextCharsLimit,
+    );
+    if (_maxContextChars == clamped) return _persistChain;
+    _maxContextChars = clamped;
+    notifyListeners();
+    _persistChain = _persistChain.then((_) => _persistMaxContextChars());
+    return _persistChain;
+  }
+
+  Future<void> _persistMaxContextChars() async {
+    try {
+      final docDir = await _documentsDirResolver();
+      final configFile = File(p.join(docDir.path, 'context_chars.txt'));
+      await configFile.writeAsString(_maxContextChars.toString());
+    } catch (_) {
+      // Best-effort persistence; ignore in tests without platform channels.
+    }
+  }
+
+  Future<void> _loadMaxContextChars(Directory docDir) async {
+    try {
+      final configFile = File(p.join(docDir.path, 'context_chars.txt'));
+      if (configFile.existsSync()) {
+        final raw = (await configFile.readAsString()).trim();
+        final parsed = int.tryParse(raw);
+        if (parsed != null) {
+          _maxContextChars = parsed.clamp(
+            EdgeLlmService.minContextChars,
+            EdgeLlmService.maxContextCharsLimit,
+          );
+        }
+      }
+    } catch (_) {}
+  }
 
   /// Checks the application documents directory for an existing `.litertlm` model.
   Future<void> checkModelAvailability() async {
@@ -47,6 +92,7 @@ class ModelManagerProvider extends ChangeNotifier {
 
     try {
       final docDir = await _documentsDirResolver();
+      await _loadMaxContextChars(docDir);
       final modelsDir = Directory(p.join(docDir.path, 'models'));
 
       if (!modelsDir.existsSync()) {

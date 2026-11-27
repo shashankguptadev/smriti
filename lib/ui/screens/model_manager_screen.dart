@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/model_manager_provider.dart';
+import '../../services/edge_llm_service.dart';
 
 /// Screen for downloading, configuring, and inspecting on-device LiteRT models.
 class ModelManagerScreen extends StatelessWidget {
@@ -236,6 +237,79 @@ class ModelManagerScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                   ],
+
+                  // Hugging Face Download Links
+                  Card(
+                    elevation: 0,
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.tune,
+                                size: 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Context Window Budget',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${provider.maxContextChars} chars',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Max document context chars per query (~${(provider.maxContextChars / 3).round()} tokens). '
+                            'Lower if you hit context limit errors on dense tables; raise for broader answers.',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          Slider(
+                            value: provider.maxContextChars.toDouble(),
+                            min: EdgeLlmService.minContextChars.toDouble(),
+                            max: EdgeLlmService.maxContextCharsLimit.toDouble(),
+                            divisions: (EdgeLlmService.maxContextCharsLimit -
+                                    EdgeLlmService.minContextChars) ~/
+                                500,
+                            label: '${provider.maxContextChars} chars',
+                            onChanged: (value) =>
+                                provider.setMaxContextChars(value.round()),
+                          ),
+                          if (provider.maxContextChars !=
+                              EdgeLlmService.defaultMaxContextChars)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () => provider.setMaxContextChars(
+                                  EdgeLlmService.defaultMaxContextChars,
+                                ),
+                                child: const Text(
+                                  'Reset to default (${EdgeLlmService.defaultMaxContextChars})',
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
                   // Hugging Face Download Links
                   Card(

@@ -54,5 +54,25 @@ void main() {
       expect(completed, isTrue);
       expect(provider.isModelReady, isTrue);
     });
+
+    testWidgets('renders context window budget slider and updates provider',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<ModelManagerProvider>.value(
+            value: provider,
+            child: const ModelManagerScreen(),
+          ),
+        ),
+      );
+
+      expect(find.text('Context Window Budget'), findsOneWidget);
+      expect(find.text('${provider.maxContextChars} chars'), findsOneWidget);
+      expect(find.byType(Slider), findsOneWidget);
+
+      provider.setMaxContextChars(7000);
+      await tester.pump();
+      expect(find.text('7000 chars'), findsOneWidget);
+    });
   });
 }

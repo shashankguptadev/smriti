@@ -56,5 +56,24 @@ void main() {
       expect(provider.isModelReady, isTrue);
       expect(provider.hasRealModel, isFalse);
     });
+
+    test('setMaxContextChars clamps, notifies, and persists across checks', () async {
+      expect(provider.maxContextChars, equals(5000));
+
+      await provider.setMaxContextChars(500);
+      expect(provider.maxContextChars, equals(1000));
+
+      await provider.setMaxContextChars(99999);
+      expect(provider.maxContextChars, equals(12000));
+
+      await provider.setMaxContextChars(6500);
+      expect(provider.maxContextChars, equals(6500));
+
+      final freshProvider = ModelManagerProvider(
+        documentsDirectoryResolver: () async => tempDir,
+      );
+      await freshProvider.checkModelAvailability();
+      expect(freshProvider.maxContextChars, equals(6500));
+    });
   });
 }
