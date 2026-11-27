@@ -6,11 +6,28 @@ import '../core/services/vector_store_service.dart';
 /// Orchestrates Retrieval-Augmented Generation (RAG) by combining BM25 lexical
 /// keyword search and vector similarity (Hybrid Retrieval) with Reciprocal Rank
 /// Fusion (RRF), conversational routing, and streaming generation from [LlmService].
+///
+/// ## v2 Retrieval Improvements
+/// - **Query expansion:** generates 2–3 lightweight variants of the user question
+///   (stripped question words, keyword-only subset) to improve recall on queries
+///   that use different vocabulary than the indexed text.
+/// - **Multi-query retrieval:** BM25 and vector search are run for each expanded
+///   query variant; results are unioned before RRF fusion.
+/// - **topK raised 5 → 8:** captures more relevant sections for multi-part questions.
+/// - **Score gating:** chunks whose aggregated RRF score falls below a minimum
+///   threshold are dropped before building the LLM context, preventing
+///   weakly-related content from confusing the model.
+/// - **Deduplication:** overlapping window chunks whose first 80 characters match
+///   are removed so the LLM never sees the same content twice.
 class RagService {
   final EmbeddingService embeddingService;
   final VectorStoreService vectorStoreService;
   final LlmService llmService;
   final int topK;
+
+  /// Minimum RRF score a chunk must reach to be included in the LLM context.
+  /// Chunks below this threshold are almost certainly unrelated to the query.
+  static const double _minRrfScore = 0.004;
 
   static final Set<String> _commonGreetings = {
     'hi',
@@ -45,17 +62,22 @@ class RagService {
     'that', 'this', 'these', 'those', 'it', 'its', 'my', 'your', 'his',
     'her', 'our', 'their', 'what', 'which', 'who', 'whom', 'when', 'where',
     'why', 'how', 'me', 'him', 'them', 'we', 'you', 'i', 'he', 'she',
-    'they', 'up', 'out', 'if', 'then',
+    'they', 'up', 'out', 'if', 'then', 'tell', 'give', 'show', 'list',
+    'explain', 'describe', 'find', 'get',
   };
 
   RagService({
     required this.embeddingService,
     required this.vectorStoreService,
     required this.llmService,
-    this.topK = 5,
+    this.topK = 8,
   });
 
-  /// Evaluates whether a question is conversational chitchat or greeting.
+  // ─────────────────────────────────────────────────────────────────────────
+  // Public API
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Returns [true] if [query] is conversational chitchat or a greeting.
   bool isConversationalQuery(String query) {
     final clean = query
         .toLowerCase()
@@ -66,10 +88,11 @@ class RagService {
   }
 
   /// Retrieves the top [k] most relevant context chunks using Hybrid Retrieval
-  /// (BM25 keyword matching + vector similarity with Reciprocal Rank Fusion).
+  /// (multi-query BM25 keyword matching + vector similarity with RRF).
   ///
-  /// Returns an empty list if the query is a conversational greeting, empty,
-  /// or when no chunks satisfy minimum relevance thresholds.
+  /// Returns an empty list when:
+  /// - the query is a conversational greeting, or
+  /// - no chunks satisfy the minimum [_minRrfScore] threshold.
   Future<List<Map<String, dynamic>>> getSourceChunks(
     String question, {
     int? k,
@@ -84,56 +107,148 @@ class RagService {
       return [];
     }
 
-    // 1. Lexical BM25 / Keyword Scoring
-    final lexicalRanked = _rankChunksLexically(question, allChunks);
+    // ── Query expansion ───────────────────────────────────────────────────
+    final queryVariants = _expandQuery(question);
 
-    // 2. Vector Similarity Search
-    final queryEmbedding = await embeddingService.embed(question);
-    final vectorResults = await vectorStoreService.query(queryEmbedding, k: effectiveK * 3);
-
-    // 3. Reciprocal Rank Fusion (RRF)
+    // ── Multi-query RRF accumulation ──────────────────────────────────────
     const kRrf = 60.0;
     final Map<String, double> rrfScores = {};
     final Map<String, Map<String, dynamic>> chunkMap = {};
 
-    // Ingest lexical rankings — give lexical more weight (2x) since it's
-    // more reliable than hash-based embedding for keyword/factual queries.
-    for (int i = 0; i < lexicalRanked.length; i++) {
-      final chunk = lexicalRanked[i];
-      final key = '${chunk['documentId']}_${chunk['chunkIndex']}';
-      chunkMap[key] = chunk;
-      rrfScores[key] = (rrfScores[key] ?? 0.0) + 2.0 / (kRrf + (i + 1));
-    }
+    for (final variant in queryVariants) {
+      // 1. Lexical BM25 scoring for this variant
+      final lexicalRanked = _rankChunksLexically(variant, allChunks);
+      for (int i = 0; i < lexicalRanked.length; i++) {
+        final chunk = lexicalRanked[i];
+        final key = _chunkKey(chunk);
+        chunkMap[key] ??= chunk;
+        // Lexical gets 2× weight — more reliable than hash-based embedding
+        rrfScores[key] = (rrfScores[key] ?? 0.0) + 2.0 / (kRrf + (i + 1));
+      }
 
-    // Ingest vector rankings
-    for (int i = 0; i < vectorResults.length; i++) {
-      final chunk = vectorResults[i];
-      final key = '${chunk['documentId']}_${chunk['chunkIndex']}';
-      chunkMap[key] ??= chunk;
-      rrfScores[key] = (rrfScores[key] ?? 0.0) + (1.0 / (kRrf + (i + 1)));
+      // 2. Vector similarity for this variant
+      final queryEmbedding = await embeddingService.embed(variant);
+      final vectorResults =
+          await vectorStoreService.query(queryEmbedding, k: effectiveK * 3);
+      for (int i = 0; i < vectorResults.length; i++) {
+        final chunk = vectorResults[i];
+        final key = _chunkKey(chunk);
+        chunkMap[key] ??= chunk;
+        rrfScores[key] = (rrfScores[key] ?? 0.0) + 1.0 / (kRrf + (i + 1));
+      }
     }
 
     if (rrfScores.isEmpty) {
       return [];
     }
 
-    // Sort by aggregated RRF score
+    // ── Sort by aggregated RRF score ──────────────────────────────────────
     final sortedKeys = rrfScores.keys.toList()
       ..sort((a, b) => rrfScores[b]!.compareTo(rrfScores[a]!));
 
-    final results = sortedKeys.take(effectiveK).map((key) {
+    // ── Score gate + deduplication + topK cap ─────────────────────────────
+    final results = <Map<String, dynamic>>[];
+    final fingerprintsSeen = <String>{};
+
+    for (final key in sortedKeys) {
+      if (results.length >= effectiveK) break;
+
+      // Drop below-threshold chunks
+      if (rrfScores[key]! < _minRrfScore) break; // sorted, so rest are lower
+
       final chunk = chunkMap[key]!;
-      return {
+      final text = (chunk['chunkText'] as String? ?? '').trim();
+
+      // Deduplication by leading 80-char fingerprint
+      final fingerprint =
+          text.substring(0, text.length < 80 ? text.length : 80);
+      if (fingerprintsSeen.contains(fingerprint)) continue;
+      fingerprintsSeen.add(fingerprint);
+
+      results.add({
         'documentId': chunk['documentId'],
         'fileName': chunk['fileName'],
         'chunkIndex': chunk['chunkIndex'],
-        'chunkText': chunk['chunkText'],
+        'chunkText': text,
         'score': rrfScores[key],
-      };
-    }).toList();
+      });
+    }
 
     return results;
   }
+
+  /// Queries relevant documents and streams the generated answer.
+  /// If [contextChunks] is provided, uses those chunks directly.
+  Stream<String> ask(
+    String question, {
+    List<Map<String, dynamic>>? contextChunks,
+  }) async* {
+    final sources = contextChunks ?? await getSourceChunks(question);
+    final texts = sources
+        .map((chunk) => chunk['chunkText'] as String? ?? '')
+        .where((text) => text.isNotEmpty)
+        .toList();
+
+    yield* llmService.generateResponse(
+      prompt: question,
+      contextChunks: texts,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Query expansion
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Generates up to 3 lightweight query variants to improve recall on queries
+  /// that use different vocabulary than the indexed document text.
+  ///
+  /// Strategies applied:
+  /// 1. Original query (always included).
+  /// 2. Question-preamble stripping: "What is X?" → "X".
+  /// 3. Key-noun subset: non-stopword tokens longer than 3 chars joined.
+  List<String> _expandQuery(String query) {
+    final variants = <String>[query];
+    final lower = query.toLowerCase().trim();
+
+    // 1. Strip common question preambles
+    final stripped = lower
+        .replaceAll(
+          RegExp(
+            r'^(what (is|are|was|were|does|do)|how (does|do|is|are|was|were)|'
+            r'why (is|are|does|do|was|were)|when (is|are|was|were)|'
+            r'where (is|are|was|were)|who (is|are|was|were)|'
+            r'tell me about|explain|describe|summarize|summarise|'
+            r'give me|show me|list|find)\s+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'[?!]+$'), '')
+        .trim();
+
+    final cleanOriginal = lower.replaceAll(RegExp(r'[?!]+$'), '').trim();
+    if (stripped.isNotEmpty && stripped != cleanOriginal) {
+      variants.add(stripped);
+    }
+
+    // 2. Key-noun token subset (non-stopword, length > 3)
+    final tokens = lower
+        .split(RegExp(r'[^a-zA-Z0-9]+'))
+        .where((t) => t.length > 3 && !_stopwords.contains(t))
+        .toList();
+    if (tokens.length >= 2) {
+      final keywordQuery = tokens.join(' ');
+      if (!variants.contains(keywordQuery)) {
+        variants.add(keywordQuery);
+      }
+    }
+
+    return variants.where((v) => v.isNotEmpty).toSet().toList();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BM25-inspired lexical scoring
+  // ─────────────────────────────────────────────────────────────────────────
 
   /// BM25-inspired lexical scoring with multi-token proximity bonus,
   /// query-coverage requirements, and stopword filtering.
@@ -170,14 +285,11 @@ class RagService {
         if (text.contains(token)) {
           matchedTokens++;
           if (RegExp(r'^[0-9]').hasMatch(token)) {
-            // Numbers like "5th" — high precision signal
-            score += 5.0;
+            score += 5.0; // Numbers / codes — high precision signal
           } else if (token.length <= 4) {
-            // Short codes/acronyms like "cse", "ece"
-            score += 4.0;
+            score += 4.0; // Short acronyms like "cse", "ece"
           } else {
-            // General words like "semester", "exam"
-            score += 2.0;
+            score += 2.0; // General words like "semester", "exam"
           }
         }
       }
@@ -187,8 +299,7 @@ class RagService {
         continue;
       }
 
-      // Multi-token proximity bonus: reward chunks where query tokens
-      // appear close together (e.g., "5th semester CSE" within 100 chars)
+      // Multi-token proximity bonus
       if (matchedTokens >= 2) {
         final positions = <int>[];
         for (final token in queryTokens) {
@@ -198,43 +309,31 @@ class RagService {
         if (positions.length >= 2) {
           positions.sort();
           final span = positions.last - positions.first;
-          // Tighter spans get higher bonus (max 10 when within 50 chars)
           if (span < 200) {
             score += math.max(0.0, 10.0 - (span / 20.0));
           }
         }
       }
 
-      // Coverage bonus: fraction of query tokens found
+      // Coverage bonus
       score += (matchedTokens / totalTokens) * 3.0;
 
       if (score > 0.0) {
-        scored.add({
-          ...chunk,
-          'lexicalScore': score,
-        });
+        scored.add({...chunk, 'lexicalScore': score});
       }
     }
 
-    scored.sort((a, b) => (b['lexicalScore'] as double).compareTo(a['lexicalScore'] as double));
+    scored.sort(
+      (a, b) =>
+          (b['lexicalScore'] as double).compareTo(a['lexicalScore'] as double),
+    );
     return scored;
   }
 
-  /// Queries relevant documents and streams the generated answer.
-  /// If [contextChunks] is provided, uses those chunks directly instead of querying.
-  Stream<String> ask(
-    String question, {
-    List<Map<String, dynamic>>? contextChunks,
-  }) async* {
-    final sources = contextChunks ?? await getSourceChunks(question);
-    final texts = sources
-        .map((chunk) => chunk['chunkText'] as String? ?? '')
-        .where((text) => text.isNotEmpty)
-        .toList();
+  // ─────────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────────────────
 
-    yield* llmService.generateResponse(
-      prompt: question,
-      contextChunks: texts,
-    );
-  }
+  static String _chunkKey(Map<String, dynamic> chunk) =>
+      '${chunk['documentId']}_${chunk['chunkIndex']}';
 }
