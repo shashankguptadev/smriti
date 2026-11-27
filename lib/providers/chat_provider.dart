@@ -83,4 +83,13 @@ class ChatProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
+
+  /// Clears the active error message and resets error status to idle.
+  void clearError() {
+    _errorMessage = null;
+    if (_status == ChatStatus.error) {
+      _status = ChatStatus.idle;
+    }
+    notifyListeners();
+  }
 }

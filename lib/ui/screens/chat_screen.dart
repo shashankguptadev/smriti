@@ -176,11 +176,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   width: double.infinity,
                   color: theme.colorScheme.errorContainer,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    provider.errorMessage!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          provider.errorMessage!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        color: theme.colorScheme.onErrorContainer,
+                        onPressed: () => context.read<ChatProvider>().clearError(),
+                        tooltip: 'Dismiss',
+                      ),
+                    ],
                   ),
                 ),
               SafeArea(

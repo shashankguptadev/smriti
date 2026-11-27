@@ -1,10 +1,33 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smriti/core/models/chat_message.dart';
+import 'package:smriti/core/services/llm_service.dart';
 import 'package:smriti/providers/chat_provider.dart';
 import 'package:smriti/services/in_memory_vector_store.dart';
 import 'package:smriti/services/mock_embedding_service.dart';
 import 'package:smriti/services/mock_llm_service.dart';
 import 'package:smriti/services/rag_service.dart';
+
+class _FailingLlmService implements LlmService {
+  final Object error;
+  _FailingLlmService(this.error);
+
+  @override
+  bool get isReady => true;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Stream<String> generateResponse({
+    required String prompt,
+    List<String> contextChunks = const [],
+  }) async* {
+    throw error;
+  }
+}
 
 void main() {
   group('ChatProvider', () {
@@ -76,6 +99,28 @@ void main() {
     test('sendMessage ignores whitespace-only prompt', () async {
       await chatProvider.sendMessage('   ');
       expect(chatProvider.messages, isEmpty);
+    });
+
+    test('sendMessage preserves raw SDK error message and clearError resets it',
+        () async {
+      const sdkError =
+          'ContextLimitException: RESOURCE_EXHAUSTED: 3574 >= 2048';
+      final failingRag = RagService(
+        embeddingService: embeddingService,
+        vectorStoreService: vectorStore,
+        llmService: _FailingLlmService(Exception(sdkError)),
+      );
+      final failingProvider = ChatProvider(ragService: failingRag);
+
+      await failingProvider.sendMessage('Hello');
+
+      expect(failingProvider.status, equals(ChatStatus.error));
+      expect(failingProvider.errorMessage, contains(sdkError));
+      expect(failingProvider.messages.last.text, contains(sdkError));
+
+      failingProvider.clearError();
+      expect(failingProvider.errorMessage, isNull);
+      expect(failingProvider.status, equals(ChatStatus.idle));
     });
   });
 }

@@ -1,12 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:smriti/core/services/llm_service.dart';
 import 'package:smriti/providers/chat_provider.dart';
 import 'package:smriti/services/in_memory_vector_store.dart';
 import 'package:smriti/services/mock_embedding_service.dart';
 import 'package:smriti/services/mock_llm_service.dart';
 import 'package:smriti/services/rag_service.dart';
 import 'package:smriti/ui/screens/chat_screen.dart';
+
+class _ErrorLlmService implements LlmService {
+  @override
+  bool get isReady => true;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Stream<String> generateResponse({
+    required String prompt,
+    List<String> contextChunks = const [],
+  }) async* {
+    throw Exception('RESOURCE_EXHAUSTED: 3574 >= 2048');
+  }
+}
 
 void main() {
   group('ChatScreen', () {
@@ -60,6 +80,44 @@ void main() {
 
       expect(find.text('Hello Smriti'), findsOneWidget);
       expect(chatProvider.messages.length, equals(2));
+    });
+
+    testWidgets('displays raw error banner and dismiss button clears it',
+        (tester) async {
+      final vs = InMemoryVectorStore();
+      await vs.initialize();
+      final rag = RagService(
+        embeddingService: const MockEmbeddingService(),
+        vectorStoreService: vs,
+        llmService: _ErrorLlmService(),
+      );
+      final errorProvider = ChatProvider(ragService: rag);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<ChatProvider>.value(
+            value: errorProvider,
+            child: const ChatScreen(),
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField), 'Trigger error');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('RESOURCE_EXHAUSTED: 3574 >= 2048'),
+        findsWidgets,
+      );
+      expect(find.byIcon(Icons.close), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(errorProvider.errorMessage, isNull);
+      expect(find.byIcon(Icons.close), findsNothing);
     });
   });
 }
