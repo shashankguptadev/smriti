@@ -146,10 +146,16 @@ void main() {
     });
 
     // ── New default chunk size ────────────────────────────────────────────
-    test('default LocalDocumentIngestor uses chunkSize 1200 and overlap 250', () {
+    test('default LocalDocumentIngestor uses chunkSize 700 and overlap 150', () {
       const defaultIngestor = LocalDocumentIngestor();
-      expect(defaultIngestor.chunkSize, equals(1200));
-      expect(defaultIngestor.chunkOverlap, equals(250));
+      expect(defaultIngestor.chunkSize, equals(700));
+      expect(defaultIngestor.chunkOverlap, equals(150));
+    });
+
+    test('chunkText collapses excessive blank lines and trailing line spaces', () {
+      const text = 'Paragraph one   \n\n\n\nParagraph two\t \n\n\nParagraph three';
+      final chunks = LocalDocumentIngestor.chunkText(text, chunkSize: 700);
+      expect(chunks, equals(['Paragraph one\n\nParagraph two\n\nParagraph three']));
     });
   });
 }

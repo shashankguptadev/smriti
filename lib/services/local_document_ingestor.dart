@@ -16,8 +16,11 @@ class _PdfExtractResult {
 /// Concrete [DocumentIngestor] supporting PDF, TXT, Markdown, PNG, JPG, and JPEG.
 ///
 /// ## Improvements over v1
-/// - **Larger defaults:** `chunkSize` 800 → 1 200, `chunkOverlap` 150 → 250 so
-///   each chunk contains a fuller, more coherent thought.
+/// - **Focused chunk sizing:** `chunkSize` 700, `chunkOverlap` 150 so chunks
+///   stay granular for retrieval precision while preserving complete thoughts.
+/// - **Layout-aware PDF extraction:** uses `layoutText: true` (with whole-doc
+///   and per-page fallbacks) to preserve inter-word spaces and table/column
+///   structure on multi-column papers and timetables.
 /// - **Structure-aware splitting:** headings (`##`, `#`, `---`) are treated as
 ///   the highest-priority split boundary, so section introductions stay with
 ///   their content.
@@ -35,8 +38,8 @@ class LocalDocumentIngestor implements DocumentIngestor {
   final int chunkOverlap;
 
   const LocalDocumentIngestor({
-    this.chunkSize = 1200,
-    this.chunkOverlap = 250,
+    this.chunkSize = 700,
+    this.chunkOverlap = 150,
   });
 
   @override
@@ -82,11 +85,50 @@ class LocalDocumentIngestor implements DocumentIngestor {
     final document = PdfDocument(inputBytes: bytes);
     try {
       final extractor = PdfTextExtractor(document);
-      final text = extractor.extractText();
       final pageCount = document.pages.count;
-      final nonWhitespace = text.replaceAll(RegExp(r'\s+'), '').length;
-      final isSparse = pageCount > 0 && (nonWhitespace / pageCount) < 30;
-      return _PdfExtractResult(text, isSparse);
+
+      // Layout-preserving extraction keeps word spaces in multi-column papers
+      // and keeps table rows aligned instead of concatenating adjacent tokens.
+      final layoutText = extractor.extractText(layoutText: true);
+      int bestNonWs = layoutText.replaceAll(RegExp(r'\s+'), '').length;
+      String bestText = layoutText;
+
+      // If layout extraction yields sparse output (< 200 non-whitespace chars/page),
+      // try standard extraction and page-by-page extraction and keep whichever
+      // yields the most text before deciding whether OCR fallback is needed.
+      if (pageCount > 0 && (bestNonWs / pageCount) < 200) {
+        final rawText = extractor.extractText();
+        final rawNonWs = rawText.replaceAll(RegExp(r'\s+'), '').length;
+        if (rawNonWs > bestNonWs) {
+          bestText = rawText;
+          bestNonWs = rawNonWs;
+        }
+
+        final pageBuffer = StringBuffer();
+        for (int i = 0; i < pageCount; i++) {
+          try {
+            final pageText = extractor.extractText(
+              startPageIndex: i,
+              endPageIndex: i,
+              layoutText: true,
+            );
+            if (pageText.trim().isNotEmpty) {
+              pageBuffer.writeln(pageText.trim());
+            }
+          } catch (_) {
+            // Skip unreadable pages
+          }
+        }
+        final perPageText = pageBuffer.toString();
+        final perPageNonWs = perPageText.replaceAll(RegExp(r'\s+'), '').length;
+        if (perPageNonWs > bestNonWs) {
+          bestText = perPageText;
+          bestNonWs = perPageNonWs;
+        }
+      }
+
+      final isSparse = pageCount > 0 && (bestNonWs / pageCount) < 200;
+      return _PdfExtractResult(bestText, isSparse);
     } finally {
       document.dispose();
     }
@@ -164,10 +206,15 @@ class LocalDocumentIngestor implements DocumentIngestor {
   /// mid-block even if slightly over [chunkSize].
   static List<String> chunkText(
     String text, {
-    int chunkSize = 1200,
-    int chunkOverlap = 250,
+    int chunkSize = 700,
+    int chunkOverlap = 150,
   }) {
-    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    final normalized = text
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .replaceAll(RegExp(r'[ \t]+\n'), '\n')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
     if (normalized.isEmpty) return [];
 
     if (normalized.length <= chunkSize) {
